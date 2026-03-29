@@ -3,13 +3,23 @@ import {
   HOOK_COOLDOWN, HOOK_FOOD_PULL, HOOK_GATHER_RADIUS,
   SWING_FORCE, SWING_MAX_SPEED, SWING_ROPE_LENGTH_MAX,
   HOOK_PLAYER_PULL, HOOK_MASS_STEAL, HOOK_STEAL_BOOST, HOOK_PLAYER_RADIUS,
-  SIZE_EAT_RATIO, DT
+  DT
 } from './constants.js';
 import { checkPointObstacleCollision } from './obstacles.js';
 import { Player } from './player.js';
 
+// Helper: find the largest cell in a player's cells array
+function getLargestCell(player) {
+  let largest = player.cells[0];
+  for (let i = 1; i < player.cells.length; i++) {
+    if (player.cells[i].mass > largest.mass) largest = player.cells[i];
+  }
+  return largest;
+}
+
 // Fire a hook toward mouseAngle
 export function fireHook(player) {
+  if (!player.alive) return;
   if (player.hookState !== 'IDLE') return;
   if (player.hookCooldown > 0) return;
 
@@ -81,10 +91,7 @@ export function updateFlyingHook(player, food, players) {
           return;
         } else if (target.mass > player.mass) {
           // Target is bigger — steal mass from their largest cell, add to our largest
-          let targetCell = target.cells[0];
-          for (let i = 1; i < target.cells.length; i++) {
-            if (target.cells[i].mass > targetCell.mass) targetCell = target.cells[i];
-          }
+          const targetCell = getLargestCell(target);
           const stolen = Math.min(targetCell.mass * HOOK_MASS_STEAL, targetCell.mass - 0.5);
           if (stolen <= 0) { releaseHook(player); return; }
           targetCell.mass -= stolen;
@@ -92,25 +99,31 @@ export function updateFlyingHook(player, food, players) {
           target.updateFromCells();
           player.addMass(stolen);
 
-          // Slingshot boost away from target
-          const bx = player.x - target.x;
-          const by = player.y - target.y;
-          const bDist = Math.sqrt(bx * bx + by * by);
-          if (bDist > 1) {
-            player.vx += (bx / bDist) * HOOK_STEAL_BOOST;
-            player.vy += (by / bDist) * HOOK_STEAL_BOOST;
+          // Slingshot boost away from target — apply to largest cell
+          const myCell = getLargestCell(player);
+          if (myCell) {
+            const bx = player.x - target.x;
+            const by = player.y - target.y;
+            const bDist = Math.sqrt(bx * bx + by * by);
+            if (bDist > 1) {
+              myCell.vx += (bx / bDist) * HOOK_STEAL_BOOST;
+              myCell.vy += (by / bDist) * HOOK_STEAL_BOOST;
+            }
           }
 
           releaseHook(player);
           return;
         } else {
-          // Similar size — brief tug toward hooker, then release
-          const tx = player.x - target.x;
-          const ty = player.y - target.y;
-          const tDist = Math.sqrt(tx * tx + ty * ty);
-          if (tDist > 1) {
-            target.vx += (tx / tDist) * 200;
-            target.vy += (ty / tDist) * 200;
+          // Similar size — brief tug toward hooker, applied to target's largest cell
+          const targetCell = getLargestCell(target);
+          if (targetCell) {
+            const tx = player.x - target.x;
+            const ty = player.y - target.y;
+            const tDist = Math.sqrt(tx * tx + ty * ty);
+            if (tDist > 1) {
+              targetCell.vx += (tx / tDist) * 200;
+              targetCell.vy += (ty / tDist) * 200;
+            }
           }
           releaseHook(player);
           return;
@@ -132,21 +145,17 @@ export function updateFlyingHook(player, food, players) {
     }
   }
 
-  // Grab own non-largest cells near hook tip
+  // Grab own non-largest cells near hook tip (store cell references, not indices)
   if (player.cells.length > 1) {
-    let largestIdx = 0;
-    for (let i = 1; i < player.cells.length; i++) {
-      if (player.cells[i].mass > player.cells[largestIdx].mass) largestIdx = i;
-    }
-    for (let i = 0; i < player.cells.length; i++) {
-      if (i === largestIdx) continue;
-      if (player.hookedOwnCells.includes(i)) continue;
-      const c = player.cells[i];
-      const dx = player.hookX - c.x;
-      const dy = player.hookY - c.y;
+    const largest = getLargestCell(player);
+    for (const cell of player.cells) {
+      if (cell === largest) continue;
+      if (player.hookedOwnCells.includes(cell)) continue;
+      const dx = player.hookX - cell.x;
+      const dy = player.hookY - cell.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < c.radius + HOOK_GATHER_RADIUS) {
-        player.hookedOwnCells.push(i);
+      if (dist < cell.radius + HOOK_GATHER_RADIUS) {
+        player.hookedOwnCells.push(cell);
       }
     }
   }
@@ -170,11 +179,7 @@ export function updateAnchoredHook(player) {
   if (player.hookState !== 'ANCHORED') return;
   if (player.cells.length === 0) return;
 
-  // Find largest cell
-  let cell = player.cells[0];
-  for (let i = 1; i < player.cells.length; i++) {
-    if (player.cells[i].mass > cell.mass) cell = player.cells[i];
-  }
+  const cell = getLargestCell(player);
 
   const dx = cell.x - player.anchorX;
   const dy = cell.y - player.anchorY;
@@ -212,7 +217,7 @@ export function updateAnchoredHook(player) {
   player.hookY = player.anchorY;
 }
 
-// Reel a hooked player toward the hooker
+// Reel a hooked player toward the hooker — apply to target's cells
 export function updateReelingPlayer(player, players) {
   if (player.hookState !== 'REELING_PLAYER') return;
 
@@ -222,7 +227,7 @@ export function updateReelingPlayer(player, players) {
     return;
   }
 
-  // Pull victim toward hooker
+  // Pull all victim cells toward hooker
   const dx = player.x - target.x;
   const dy = player.y - target.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
@@ -232,13 +237,13 @@ export function updateReelingPlayer(player, players) {
     const ny = dy / dist;
     const pullSpeed = HOOK_PLAYER_PULL;
 
-    // Move victim toward hooker
-    target.vx += nx * pullSpeed * DT * 3;
-    target.vy += ny * pullSpeed * DT * 3;
-
-    // Slow victim's escape attempts
-    target.vx *= 0.95;
-    target.vy *= 0.95;
+    for (const cell of target.cells) {
+      cell.vx += nx * pullSpeed * DT * 3;
+      cell.vy += ny * pullSpeed * DT * 3;
+      // Slow victim's escape attempts
+      cell.vx *= 0.95;
+      cell.vy *= 0.95;
+    }
   }
 
   // Update hook visual to track victim
@@ -256,14 +261,7 @@ export function reelHookedFood(player, foodById) {
   if (player.hookState !== 'REELING') return;
 
   // Find largest cell (reel target)
-  let largest = player.cells[0];
-  let largestIdx = 0;
-  for (let i = 1; i < player.cells.length; i++) {
-    if (player.cells[i].mass > largest.mass) {
-      largest = player.cells[i];
-      largestIdx = i;
-    }
-  }
+  const largest = getLargestCell(player);
 
   let anyActive = false;
 
@@ -291,15 +289,16 @@ export function reelHookedFood(player, foodById) {
     }
   }
 
-  // Reel own cells toward largest cell
-  const pullSpeed = HOOK_FOOD_PULL * 1.5; // Pull own cells a bit faster
+  // Reel own cells toward largest cell (hookedOwnCells stores cell references)
+  const pullSpeed = HOOK_FOOD_PULL * 1.5;
   for (let hi = player.hookedOwnCells.length - 1; hi >= 0; hi--) {
-    const ci = player.hookedOwnCells[hi];
-    if (ci >= player.cells.length || ci === largestIdx) {
+    const cell = player.hookedOwnCells[hi];
+    // Validate: cell still belongs to this player and isn't the largest
+    const ci = player.cells.indexOf(cell);
+    if (ci === -1 || cell === largest) {
       player.hookedOwnCells.splice(hi, 1);
       continue;
     }
-    const cell = player.cells[ci];
 
     anyActive = true;
 
@@ -313,11 +312,6 @@ export function reelHookedFood(player, foodById) {
       largest.radius = Player.radiusFromMass(largest.mass);
       player.cells.splice(ci, 1);
       player.hookedOwnCells.splice(hi, 1);
-      // Fix indices — any hooked index > ci needs to shift down
-      for (let k = 0; k < player.hookedOwnCells.length; k++) {
-        if (player.hookedOwnCells[k] > ci) player.hookedOwnCells[k]--;
-      }
-      if (largestIdx > ci) largestIdx--;
     } else if (dist > 0.1) {
       const nx = dx / dist;
       const ny = dy / dist;

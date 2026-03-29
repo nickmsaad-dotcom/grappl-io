@@ -2,7 +2,9 @@
 
 import { ARENA_WIDTH, ARENA_HEIGHT } from './constants.js';
 import { drawParticles } from './particles.js';
-import { getMyId, getObstacles } from './net.js';
+import { getMyId, getObstacles, getRoomKey } from './net.js';
+import { getMouseScreenPos, isMobile } from './input.js';
+import { drawTouchControls } from './touch.js';
 
 let screenShake = { x: 0, y: 0, intensity: 0 };
 
@@ -252,9 +254,45 @@ export function render(ctx, canvas, state, dt) {
 
   // Minimap + controls legend (screen space, after ctx.restore)
   drawMinimap(ctx, canvas, state, myId);
-  drawControlsLegend(ctx, canvas);
+  if (isMobile) {
+    drawTouchControls(ctx, canvas);
+  } else {
+    drawControlsLegend(ctx, canvas);
+    drawCrosshair(ctx);
+  }
 
   return { offsetX, offsetY, scale };
+}
+
+function drawCrosshair(ctx) {
+  const pos = getMouseScreenPos();
+  if (pos === null) return;
+  const { x, y } = pos;
+  const size = 10;
+  const gap = 4;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  // Top
+  ctx.moveTo(x, y - gap);
+  ctx.lineTo(x, y - gap - size);
+  // Bottom
+  ctx.moveTo(x, y + gap);
+  ctx.lineTo(x, y + gap + size);
+  // Left
+  ctx.moveTo(x - gap, y);
+  ctx.lineTo(x - gap - size, y);
+  // Right
+  ctx.moveTo(x + gap, y);
+  ctx.lineTo(x + gap + size, y);
+  ctx.stroke();
+  // Center dot
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.beginPath();
+  ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawGrid(ctx, cx, cy, viewW, viewH) {
@@ -481,15 +519,13 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
 
   ctx.globalAlpha = 1;
 
-  // Crown for #1 player (only on largest cell)
+  // Star badge for #1 player (only on largest cell)
   if (isLeader) {
-    drawCrown(ctx, x, y, radius);
+    drawLeaderStar(ctx, x, y, radius);
   }
 
   // Name label — only on largest cell
   if (isLargest) {
-    const textCol = getTextColor(color);
-    const isLightBg = textCol[1] === '0';
     const fontSize = Math.max(11, Math.min(16, radius * 0.5));
     ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
@@ -498,6 +534,28 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     ctx.strokeText(name, x, y - radius - 8);
     ctx.fillStyle = '#ffffffcc';
     ctx.fillText(name, x, y - radius - 8);
+
+    // Active powerup labels below player circle
+    const effects = player.effects || {};
+    const activeLabels = [];
+    if (effects.speed) activeLabels.push({ label: 'SPEED', color: '#00ffff' });
+    if (effects.shield) activeLabels.push({ label: 'SHIELD', color: '#ffffff' });
+    if (effects.magnet) activeLabels.push({ label: 'MAGNET', color: '#cc33ff' });
+    if (effects.bomb) activeLabels.push({ label: 'MASS BOMB', color: '#ff6600' });
+
+    if (activeLabels.length > 0) {
+      const labelSize = Math.max(9, Math.min(12, radius * 0.35));
+      ctx.font = `bold ${labelSize}px "Segoe UI", Arial, sans-serif`;
+      let labelY = y + radius + labelSize + 6;
+      for (const item of activeLabels) {
+        ctx.strokeStyle = '#000000aa';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(item.label, x, labelY);
+        ctx.fillStyle = item.color;
+        ctx.fillText(item.label, x, labelY);
+        labelY += labelSize + 3;
+      }
+    }
   }
 
   // Mass display inside cell
@@ -517,39 +575,44 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
   }
 }
 
-function drawCrown(ctx, x, y, radius) {
-  const crownW = radius * 0.9;
-  const crownH = radius * 0.5;
-  const crownY = y - radius - crownH - 6;
+function drawLeaderStar(ctx, x, y, radius) {
+  const starSize = Math.max(8, radius * 0.3);
+  const starX = x;
+  const starY = y - radius - starSize - 6;
+  const rotation = frameTime * 0.0008; // Slow rotation
+  const points = 5;
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+
+  // Soft glow behind star
+  const glow = ctx.createRadialGradient(starX, starY, 0, starX, starY, starSize * 2);
+  glow.addColorStop(0, '#ffd70044');
+  glow.addColorStop(1, '#ffd70000');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(starX, starY, starSize * 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw star shape
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const angle = rotation + (i * Math.PI) / points - Math.PI / 2;
+    const r = i % 2 === 0 ? starSize : starSize * 0.45;
+    const px = starX + Math.cos(angle) * r;
+    const py = starY + Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
 
   ctx.fillStyle = '#ffd700';
-  ctx.beginPath();
-  const left = x - crownW / 2;
-  const right = x + crownW / 2;
-  const top = crownY - crownH;
-  const bot = crownY;
-  ctx.moveTo(left, bot);
-  ctx.lineTo(left, top + crownH * 0.4);
-  ctx.lineTo(left + crownW * 0.25, top + crownH * 0.65);
-  ctx.lineTo(x, top);
-  ctx.lineTo(right - crownW * 0.25, top + crownH * 0.65);
-  ctx.lineTo(right, top + crownH * 0.4);
-  ctx.lineTo(right, bot);
-  ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = '#ffaa00';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 
-  // Jewels
-  ctx.fillStyle = '#ff3333';
-  ctx.beginPath();
-  ctx.arc(x, top + crownH * 0.55, crownW * 0.06, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#3399ff';
-  ctx.beginPath();
-  ctx.arc(left + crownW * 0.25, top + crownH * 0.7, crownW * 0.05, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(right - crownW * 0.25, top + crownH * 0.7, crownW * 0.05, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.restore();
 }
 
 function drawMinimap(ctx, canvas, state, myId) {
@@ -609,10 +672,48 @@ function drawControlsLegend(ctx, canvas) {
     ['Click', 'Fire hook'],
     ['Release', 'Detach hook'],
     ['Space', 'Split'],
+    ['Esc', 'Menu'],
   ];
   const legendH = controls.length * lineH + 12;
   const lx = canvas.width - legendW - padding;
   const ly = canvas.height - minimapSize - padding - legendH - 8;
+
+  // Room key label above legend
+  const roomKey = getRoomKey();
+  if (roomKey) {
+    const rkY = ly - 24;
+    ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
+    const rkW = 160;
+    const rkH = 20;
+    const rkX = lx;
+    // Rounded pill background
+    const rr = 4;
+    ctx.beginPath();
+    ctx.moveTo(rkX + rr, rkY);
+    ctx.lineTo(rkX + rkW - rr, rkY);
+    ctx.quadraticCurveTo(rkX + rkW, rkY, rkX + rkW, rkY + rr);
+    ctx.lineTo(rkX + rkW, rkY + rkH - rr);
+    ctx.quadraticCurveTo(rkX + rkW, rkY + rkH, rkX + rkW - rr, rkY + rkH);
+    ctx.lineTo(rkX + rr, rkY + rkH);
+    ctx.quadraticCurveTo(rkX, rkY + rkH, rkX, rkY + rkH - rr);
+    ctx.lineTo(rkX, rkY + rr);
+    ctx.quadraticCurveTo(rkX, rkY, rkX + rr, rkY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#666';
+    ctx.fillText('SERVER:', rkX + 8, rkY + 14);
+    ctx.fillStyle = '#00ffffcc';
+    ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+    ctx.letterSpacing = '2px';
+    ctx.fillText(roomKey, rkX + 60, rkY + 14);
+    ctx.letterSpacing = '0px';
+  }
 
   // Background
   ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';

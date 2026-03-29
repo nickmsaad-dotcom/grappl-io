@@ -11,25 +11,28 @@ import {
   POWERUP_MAGNET_RANGE, POWERUP_MAGNET_PULL,
   POWERUP_BOMB_RANGE, POWERUP_BOMB_STEAL
 } from './constants.js';
-import { Player } from './player.js';
+import { Player, nextCellId } from './player.js';
 import { applyMovement, applyFriction, integrate } from './physics.js';
 // Player is also used for Player.radiusFromMass in eatCell/splitPlayer
 import { fireHook, releaseHook, updateFlyingHook, updateAnchoredHook, updateReelingPlayer, reelHookedFood, checkFoodPickup } from './hook.js';
 import { resolvePlayerCollisions, applySoftBoundary, applyObstacleCollision } from './collision.js';
-import { serializeObstacles } from './obstacles.js';
+import { serializeObstacles, checkCircleObstacleCollision } from './obstacles.js';
 import { Round } from './round.js';
-import { getBotName, updateBotInput } from './bot.js';
+import { getBotName, initBotPersonality, updateBotInput } from './bot.js';
+import { cleanName } from './profanity.js';
+import { submitPlayerStats } from './leaderboard.js';
 
-const MIN_PLAYERS = 12;
-let foodIdCounter = 0;
+const MIN_PLAYERS = 16;
 
 export class Game {
-  constructor(io) {
+  constructor(io, roomKey) {
     this.io = io;
+    this.roomKey = roomKey;
     this.players = new Map();
     this.round = new Round();
     this.food = [];
     this.foodById = new Map();
+    this.foodIdCounter = 0;
     this.obstacles = serializeObstacles();
     this.powerups = [];
     this.powerupIdCounter = 0;
@@ -47,6 +50,18 @@ export class Game {
 
     // Start game loop
     this.interval = setInterval(() => this.update(), 1000 / TICK_RATE);
+  }
+
+  destroy() {
+    clearInterval(this.interval);
+  }
+
+  get humanCount() {
+    let count = 0;
+    for (const p of this.players.values()) {
+      if (!p.isBot) count++;
+    }
+    return count;
   }
 
   // --- Food system ---
@@ -85,7 +100,7 @@ export class Game {
       if (!blocked) break;
     }
     return {
-      id: foodIdCounter++,
+      id: this.foodIdCounter++,
       x, y,
       radius: FOOD_RADIUS,
       mass: FOOD_MASS,
@@ -179,6 +194,7 @@ export class Game {
       if (!player.alive) continue;
       if (player.effects.speed > 0) player.effects.speed -= DT;
       if (player.effects.shield > 0) player.effects.shield -= DT;
+      if (player.effects.bomb > 0) player.effects.bomb -= DT;
       if (player.effects.magnet > 0) {
         player.effects.magnet -= DT;
         // Pull nearby food toward each cell
@@ -206,21 +222,30 @@ export class Game {
     } else if (pu.type === 'magnet') {
       player.effects.magnet = pu.duration;
     } else if (pu.type === 'bomb') {
-      // Instant: steal 30% mass from nearby players
+      // Instant: steal 30% mass from nearby players (per-cell range check)
+      player.effects.bomb = 3; // Display label for 3 seconds
+      const bombR2 = POWERUP_BOMB_RANGE ** 2;
       for (const other of this.players.values()) {
         if (other.id === player.id || !other.alive) continue;
-        const dx = player.x - other.x;
-        const dy = player.y - other.y;
-        if (dx * dx + dy * dy < POWERUP_BOMB_RANGE ** 2) {
-          const stolen = other.mass * POWERUP_BOMB_STEAL;
-          // Remove proportionally from each cell
-          for (const cell of other.cells) {
-            const ratio = cell.mass / other.mass;
-            cell.mass = Math.max(CELL_MIN_MASS, cell.mass - stolen * ratio);
-            cell.radius = Player.radiusFromMass(cell.mass);
+        let totalStolen = 0;
+        for (const cell of other.cells) {
+          // Check each cell individually against each of our cells
+          let inRange = false;
+          for (const myCell of player.cells) {
+            const dx = myCell.x - cell.x;
+            const dy = myCell.y - cell.y;
+            if (dx * dx + dy * dy < bombR2) { inRange = true; break; }
           }
+          if (inRange) {
+            const before = cell.mass;
+            cell.mass = Math.max(CELL_MIN_MASS, cell.mass - cell.mass * POWERUP_BOMB_STEAL);
+            cell.radius = Player.radiusFromMass(cell.mass);
+            totalStolen += before - cell.mass;
+          }
+        }
+        if (totalStolen > 0) {
           other.updateFromCells();
-          player.addMass(stolen);
+          player.addMass(totalStolen);
         }
       }
     }
@@ -235,6 +260,7 @@ export class Game {
       bot._botSeed = Math.random() * 1000;
       bot._botWanderAngle = Math.random() * Math.PI * 2;
       bot._botWanderTimer = 0;
+      initBotPersonality(bot);
       this.players.set(id, bot);
       this.botIds.add(id);
     }
@@ -250,7 +276,7 @@ export class Game {
 
   // --- Player lifecycle ---
   addPlayer(id, name) {
-    const player = new Player(id, name);
+    const player = new Player(id, cleanName(name));
     this.players.set(id, player);
     if (this.botIds.size > 0 && this.players.size > MIN_PLAYERS) {
       this.removeBots(1);
@@ -258,6 +284,10 @@ export class Game {
   }
 
   removePlayer(id) {
+    const player = this.players.get(id);
+    if (player && !player.isBot) {
+      submitPlayerStats(player.name, player.kills, player.peakMass);
+    }
     this.players.delete(id);
     this.botIds.delete(id);
     this.fillBots();
@@ -267,7 +297,7 @@ export class Game {
     const player = this.players.get(id);
     if (!player || player.alive) return;
     if (newName && typeof newName === 'string') {
-      player.name = newName.slice(0, 16) || player.name;
+      player.name = cleanName(newName.slice(0, 16)) || player.name;
     }
     player.spawn();
   }
@@ -301,7 +331,7 @@ export class Game {
     this.tick++;
 
     // Respawn food frequently to keep the map populated
-    if (this.tick % 10 === 0) {
+    if (this.tick % 3 === 0) {
       this.fillFood();
     }
 
@@ -343,10 +373,15 @@ export class Game {
       applyMovement(player);
 
       // Mass decay per cell
-      for (const cell of player.cells) {
+      for (let ci = player.cells.length - 1; ci >= 0; ci--) {
+        const cell = player.cells[ci];
         if (cell.mass > CELL_MIN_MASS) {
           cell.mass = Math.max(CELL_MIN_MASS, cell.mass - cell.mass * MASS_DECAY_RATE * DT);
           cell.radius = Player.radiusFromMass(cell.mass);
+        }
+        // Remove decayed min-mass cells (keep at least one)
+        if (cell.mass <= CELL_MIN_MASS && player.cells.length > 1) {
+          player.cells.splice(ci, 1);
         }
       }
     }
@@ -374,6 +409,7 @@ export class Game {
         player.alive = false;
         player.deaths++;
         player.respawnTimer = 1.0;
+        if (!player.isBot) submitPlayerStats(player.name, player.kills, player.peakMass);
         if (player.hookState !== 'IDLE') releaseHook(player);
         continue;
       }
@@ -418,13 +454,25 @@ export class Game {
     largest.radius = Player.radiusFromMass(halfMass);
 
     const angle = player.input.mouseAngle;
+    let spawnX = largest.x + Math.cos(angle) * largest.radius;
+    let spawnY = largest.y + Math.sin(angle) * largest.radius;
+
+    // Push spawn position out of obstacles
+    const spawnRadius = Player.radiusFromMass(halfMass);
+    const obsHit = checkCircleObstacleCollision(spawnX, spawnY, spawnRadius);
+    if (obsHit) {
+      spawnX += obsHit.pushX;
+      spawnY += obsHit.pushY;
+    }
+
     const newCell = {
-      x: largest.x + Math.cos(angle) * largest.radius,
-      y: largest.y + Math.sin(angle) * largest.radius,
+      id: nextCellId(),
+      x: spawnX,
+      y: spawnY,
       vx: largest.vx + Math.cos(angle) * SPLIT_LAUNCH_SPEED,
       vy: largest.vy + Math.sin(angle) * SPLIT_LAUNCH_SPEED,
       mass: halfMass,
-      radius: Player.radiusFromMass(halfMass),
+      radius: spawnRadius,
       mergeTimer: MERGE_COOLDOWN,
     };
 
@@ -435,7 +483,9 @@ export class Game {
 
   resolveSelfCellCollisions(player) {
     const cells = player.cells;
-    for (let i = 0; i < cells.length; i++) {
+    let i = 0;
+    while (i < cells.length) {
+      let merged = false;
       for (let j = i + 1; j < cells.length; j++) {
         const a = cells[i];
         const b = cells[j];
@@ -468,7 +518,7 @@ export class Game {
               b.mass += a.mass;
               b.radius = Player.radiusFromMass(b.mass);
               cells.splice(i, 1);
-              i--;
+              merged = true; // cell i was removed; don't increment i
               break;
             }
           }
@@ -487,13 +537,15 @@ export class Game {
           b.vy += ny * SELF_PUSH_STRENGTH * DT;
         }
       }
+      if (!merged) i++;
     }
   }
 
   eatCell(eaterPlayer, eaterCell, victimPlayer, victimCell) {
-    // Remove victim cell
+    // Remove victim cell — guard against double-eat
     const idx = victimPlayer.cells.indexOf(victimCell);
-    if (idx !== -1) victimPlayer.cells.splice(idx, 1);
+    if (idx === -1) return;
+    victimPlayer.cells.splice(idx, 1);
 
     // Transfer mass to eater cell
     const gained = victimCell.mass * MASS_ABSORB_RATIO;
@@ -511,6 +563,14 @@ export class Game {
       eaterPlayer.killStreak++;
       this.round.addKill(eaterPlayer.name, victimPlayer.name);
 
+      // Submit both players' stats to all-time leaderboard (skip bots)
+      if (!victimPlayer.isBot) {
+        submitPlayerStats(victimPlayer.name, victimPlayer.kills, victimPlayer.peakMass);
+      }
+      if (!eaterPlayer.isBot) {
+        submitPlayerStats(eaterPlayer.name, eaterPlayer.kills, eaterPlayer.peakMass);
+      }
+
       if (victimPlayer.hookState !== 'IDLE') {
         releaseHook(victimPlayer);
       }
@@ -526,7 +586,6 @@ export class Game {
       playerList.push(p.serialize());
     }
 
-    // Leaderboard sorted by score (total mass consumed)
     // Leaderboard sorted by current size (displayMass)
     const leaderboard = playerList
       .map(p => ({ id: p.id, name: p.name, score: p.displayMass, color: p.color }))
@@ -552,6 +611,6 @@ export class Game {
     };
     if (foodList) snapshot.food = foodList;
 
-    this.io.emit('snapshot', snapshot);
+    this.io.to(this.roomKey).emit('snapshot', snapshot);
   }
 }

@@ -45,7 +45,7 @@ export function applyMovement(player) {
     }
 
     // Scale acceleration by cell mass
-    const sizeScale = 1 / (1 + (cell.mass - 1) * SIZE_SPEED_FACTOR);
+    const sizeScale = 1 / (1 + Math.sqrt(Math.max(0, cell.mass - 1)) * SIZE_SPEED_FACTOR);
     const accel = BASE_ACCEL * sizeScale * speedBuff;
 
     cell.vx += ax * accel * DT;
@@ -62,7 +62,7 @@ export function applyFriction(player) {
     cell.vy *= friction;
 
     // Speed cap scales with size
-    const sizeScale = 1 / (1 + (cell.mass - 1) * SIZE_SPEED_FACTOR);
+    const sizeScale = 1 / (1 + Math.sqrt(Math.max(0, cell.mass - 1)) * SIZE_SPEED_FACTOR);
     const swingBonus = player.hookState === 'ANCHORED' ? 1.8 : 1;
     const speedBuff = player.effects && player.effects.speed > 0 ? POWERUP_SPEED_MULT : 1;
     const maxSpeed = BASE_SPEED * sizeScale * swingBonus * speedBuff;

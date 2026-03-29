@@ -1,7 +1,8 @@
 // Main entry point
 
-import { initInput, getInput, setCameraTransform } from './input.js';
-import { connect, join, sendInput, sendRespawn, getMyId } from './net.js';
+import { initInput, getInput, setCameraTransform, isMobile } from './input.js';
+import { getPauseQueued } from './touch.js';
+import { connect, disconnect, join, sendInput, sendRespawn, getMyId, createRoom, joinRoom, getRoomKey } from './net.js';
 import { getInterpolatedState } from './interpolation.js';
 import { render, updateHUD, triggerScreenShake, spawnFloatingText, startDeathAnim, triggerHitStop } from './renderer.js';
 import { updateParticles, spawnDeathBurst, spawnTrail, spawnStealSparks } from './particles.js';
@@ -25,14 +26,31 @@ let joined = false;
 const joinScreen = document.getElementById('join-screen');
 const nameInput = document.getElementById('name-input');
 const joinBtn = document.getElementById('join-btn');
+const roomInput = document.getElementById('room-input');
+const createBtn = document.getElementById('create-btn');
+const roomDisplay = document.getElementById('room-display');
+const roomCodeValue = document.getElementById('room-code-value');
+const joinError = document.getElementById('join-error');
 const hud = document.getElementById('hud');
 const deathScreen = document.getElementById('death-screen');
 const deathStats = document.getElementById('death-stats');
 const renameInput = document.getElementById('rename-input');
+const deathRoomInput = document.getElementById('death-room-input');
 const retryBtn = document.getElementById('retry-btn');
+const deathQuitBtn = document.getElementById('death-quit-btn');
+const pauseScreen = document.getElementById('pause-screen');
+const pauseCloseBtn = document.getElementById('pause-close-btn');
+const pauseRoomInput = document.getElementById('pause-room-input');
+const pauseSwitchBtn = document.getElementById('pause-switch-btn');
+const pauseQuitBtn = document.getElementById('pause-quit-btn');
 let playerName = 'Anon';
 
-function doJoin() {
+function showJoinError(msg) {
+  joinError.textContent = msg;
+  joinError.classList.remove('hidden');
+}
+
+function enterGame() {
   playerName = nameInput.value.trim() || 'Anon';
   join(playerName);
   joinScreen.style.display = 'none';
@@ -41,17 +59,61 @@ function doJoin() {
   canvas.focus();
 }
 
+function doJoin() {
+  joinError.classList.add('hidden');
+  const code = roomInput.value.trim().toUpperCase();
+
+  if (code) {
+    // Join existing room
+    joinRoom(code, (err) => {
+      if (err) { showJoinError(err); return; }
+      enterGame();
+    });
+  } else {
+    // Create new room then enter
+    createRoom((err, key) => {
+      if (err) { showJoinError('Failed to create room'); return; }
+      roomInput.value = key;
+      roomDisplay.classList.remove('hidden');
+      roomCodeValue.textContent = key;
+      enterGame();
+    });
+  }
+}
+
+createBtn.addEventListener('click', () => {
+  joinError.classList.add('hidden');
+  createRoom((err, key) => {
+    if (err) { showJoinError('Failed to create room'); return; }
+    roomInput.value = key;
+    roomDisplay.classList.remove('hidden');
+    roomCodeValue.textContent = key;
+  });
+});
+
 function doRetry() {
   const newName = renameInput.value.trim();
   if (newName) playerName = newName;
-  sendRespawn(newName || null);
+  const newRoom = deathRoomInput.value.trim().toUpperCase();
+
+  if (newRoom && newRoom !== getRoomKey()) {
+    // Switch rooms on respawn
+    sendRespawn(playerName, newRoom);
+  } else {
+    sendRespawn(newName || null);
+  }
   deathScreen.classList.add('hidden');
   renameInput.value = '';
+  deathRoomInput.value = '';
   canvas.focus();
 }
 
 retryBtn.addEventListener('click', doRetry);
+deathQuitBtn.addEventListener('click', doQuit);
 renameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doRetry();
+});
+deathRoomInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doRetry();
 });
 
@@ -59,10 +121,111 @@ joinBtn.addEventListener('click', doJoin);
 nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doJoin();
 });
-
-connect((data) => {
-  console.log('Joined as', data.id);
+roomInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doJoin();
 });
+
+// Esc key menu
+function openPauseMenu() {
+  if (!joined || joinScreen.style.display !== 'none') return;
+  // Don't open if death screen is showing
+  if (!deathScreen.classList.contains('hidden')) return;
+  pauseRoomInput.value = '';
+  pauseScreen.classList.remove('hidden');
+}
+
+function closePauseMenu() {
+  pauseScreen.classList.add('hidden');
+  canvas.focus();
+}
+
+function doPauseSwitch() {
+  const newRoom = pauseRoomInput.value.trim().toUpperCase();
+  if (!newRoom || newRoom === getRoomKey()) {
+    closePauseMenu();
+    return;
+  }
+  prevState = null;
+  streakAnnouncement = null;
+  sendRespawn(playerName, newRoom);
+  closePauseMenu();
+}
+
+function doQuit() {
+  pauseScreen.classList.add('hidden');
+  deathScreen.classList.add('hidden');
+  hud.classList.add('hidden');
+  joinScreen.style.display = '';
+  joined = false;
+  nameInput.value = playerName !== 'Anon' ? playerName : '';
+  roomInput.value = '';
+  roomDisplay.classList.add('hidden');
+  // Disconnect and reconnect so server cleans up the player
+  prevState = null;
+  streakAnnouncement = null;
+  disconnect();
+  connect();
+  fetchAlltimeLeaderboards();
+  nameInput.focus();
+}
+
+pauseCloseBtn.addEventListener('click', closePauseMenu);
+pauseSwitchBtn.addEventListener('click', doPauseSwitch);
+pauseRoomInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doPauseSwitch();
+});
+pauseQuitBtn.addEventListener('click', doQuit);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (!pauseScreen.classList.contains('hidden')) {
+      closePauseMenu();
+    } else {
+      openPauseMenu();
+    }
+  }
+});
+
+// All-time leaderboards — fetch and render on homepage
+function escapeText(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+const RANK_CLASSES = ['gold', 'silver', 'bronze'];
+
+function renderAlltimeBoard(containerId, entries) {
+  const el = document.getElementById(containerId);
+  if (!entries || entries.length === 0) {
+    el.innerHTML = '<div class="alltime-empty">No records yet</div>';
+    return;
+  }
+  el.innerHTML = entries.map((e, i) =>
+    `<div class="alltime-entry">
+      <span class="alltime-rank ${RANK_CLASSES[i] || ''}">${i + 1}.</span>
+      <span class="alltime-name">${escapeText(e.name)}</span>
+      <span class="alltime-value">${e.value}</span>
+    </div>`
+  ).join('');
+}
+
+function fetchAlltimeLeaderboards() {
+  fetch('/api/leaderboard')
+    .then(r => r.json())
+    .then(data => {
+      renderAlltimeBoard('alltime-kills', data.kills);
+      renderAlltimeBoard('alltime-score', data.score);
+    })
+    .catch(() => {}); // Silently fail — boards stay as "No records yet"
+}
+
+// Fetch on page load and refresh periodically
+fetchAlltimeLeaderboards();
+setInterval(fetchAlltimeLeaderboards, 15000); // Refresh every 15 seconds
+
+// Connect socket (no room yet — room selected on PLAY)
+connect();
 
 function loop() {
   requestAnimationFrame(loop);
@@ -73,17 +236,26 @@ function loop() {
 
   const state = getInterpolatedState();
 
+  // Mobile pause button
+  if (isMobile && getPauseQueued()) {
+    if (!pauseScreen.classList.contains('hidden')) {
+      closePauseMenu();
+    } else {
+      openPauseMenu();
+    }
+  }
+
   if (joined && state) {
     const myId = getMyId();
     const me = state.players.find(p => p.id === myId);
 
-    if (me) {
+    if (me && pauseScreen.classList.contains('hidden')) {
       const input = getInput(me.x, me.y);
       sendInput(input);
     }
 
     if (prevState) {
-      detectEvents(prevState, state);
+      detectEvents(prevState, state, dt);
     }
 
     // Player movement trails (per cell)
@@ -152,7 +324,7 @@ let pendingFoodScore = 0;
 let pendingFoodTimer = 0;
 const FOOD_BATCH_INTERVAL = 0.4; // seconds
 
-function detectEvents(prev, curr) {
+function detectEvents(prev, curr, dt) {
   const myId = getMyId();
   const prevMap = new Map(prev.players.map(p => [p.id, p]));
   const me = curr.players.find(p => p.id === myId);
@@ -161,6 +333,11 @@ function detectEvents(prev, curr) {
   for (const player of curr.players) {
     const prevPlayer = prevMap.get(player.id);
     if (!prevPlayer) continue;
+
+    // Player respawned: was dead, now alive — clear streak display
+    if (!prevPlayer.alive && player.alive && player.id === myId) {
+      streakAnnouncement = null;
+    }
 
     // Player eaten: was alive, now dead
     if (prevPlayer.alive && !player.alive) {
@@ -212,7 +389,7 @@ function detectEvents(prev, curr) {
   }
 
   // Flush batched food score
-  pendingFoodTimer += 0.033; // ~30Hz broadcast rate
+  pendingFoodTimer += dt;
   if (pendingFoodScore > 0 && pendingFoodTimer >= FOOD_BATCH_INTERVAL) {
     if (me && me.alive) {
       spawnFloatingText(me.x + (Math.random() - 0.5) * 30, me.y - me.radius,

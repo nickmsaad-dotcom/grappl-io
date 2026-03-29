@@ -10,19 +10,21 @@ function lerp(a, b, t) {
 
 function lerpCell(a, b, t) {
   return {
+    id: b.id,
     x: lerp(a.x, b.x, t),
     y: lerp(a.y, b.y, t),
     vx: lerp(a.vx, b.vx, t),
     vy: lerp(a.vy, b.vy, t),
     radius: lerp(a.radius, b.radius, t),
     mass: lerp(a.mass, b.mass, t),
+    mergeTimer: b.mergeTimer,
   };
 }
 
 function lerpPlayer(a, b, t) {
-  // Lerp cells by index
-  const cells = b.cells ? b.cells.map((bc, i) => {
-    const ac = a.cells && a.cells[i];
+  // Match cells by ID for stable interpolation across splits/merges
+  const cells = b.cells ? b.cells.map((bc) => {
+    const ac = a.cells && a.cells.find(c => c.id === bc.id);
     if (!ac) return bc; // New cell from split — no lerp
     return lerpCell(ac, bc, t);
   }) : [];

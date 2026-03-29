@@ -5,9 +5,9 @@ export const MIN_PLAYER_RADIUS = 18;
 export const FOOD_RADIUS = 5;
 
 // Physics (mirrored from server for client-side prediction)
-export const BASE_SPEED = 480;
-export const SIZE_SPEED_FACTOR = 0.35;
-export const BASE_ACCEL = 3200;
+export const BASE_SPEED = 540;
+export const SIZE_SPEED_FACTOR = 0.22;
+export const BASE_ACCEL = 3600;
 export const FRICTION = 0.82;
 export const POWERUP_SPEED_MULT = 1.8;
 

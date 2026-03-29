@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>CircleEatGame.io – Hook, Feed, Grow!</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -13,8 +13,34 @@
       <h1 class="logo">CIRCLEEATGAME<span class="logo-dot">.</span>IO</h1>
       <p class="tagline">Hook, Feed, Grow!</p>
       <input type="text" id="name-input" placeholder="Enter nickname..." maxlength="16" autofocus>
-      <button id="join-btn">PLAY</button>
-      <p class="controls-hint">WASD to move &middot; Click to hook &middot; Space to split &middot; Eat smaller players to grow</p>
+      <input type="text" id="room-input" placeholder="Enter server code..." maxlength="6">
+      <p class="input-hint">Optional — leave blank to join a random server</p>
+      <div id="room-display" class="hidden">
+        <span id="room-code-value"></span>
+        <p id="room-share-hint">Share this code with friends!</p>
+      </div>
+      <div id="join-buttons">
+        <button id="join-btn">PLAY</button>
+        <button id="create-btn">CREATE SERVER</button>
+      </div>
+      <div id="join-error" class="hidden"></div>
+      <p class="controls-hint desktop-hint">WASD to move &middot; Click to hook &middot; Space to split &middot; Esc for menu</p>
+      <p class="controls-hint mobile-hint">Left thumb to move &middot; Right tap to hook &middot; Double-tap to split</p>
+
+      <div id="alltime-boards">
+        <div class="alltime-board">
+          <div class="alltime-title">TOP KILLS</div>
+          <div id="alltime-kills" class="alltime-list">
+            <div class="alltime-empty">No records yet</div>
+          </div>
+        </div>
+        <div class="alltime-board">
+          <div class="alltime-title">TOP MASS</div>
+          <div id="alltime-score" class="alltime-list">
+            <div class="alltime-empty">No records yet</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -33,8 +59,22 @@
       <div id="death-box">
         <div id="death-title">YOU WERE EATEN!</div>
         <div id="death-stats"></div>
-        <input type="text" id="rename-input" placeholder="Change name (optional)" maxlength="16">
-        <button id="retry-btn">RETRY</button>
+        <input type="text" id="rename-input" placeholder="Enter nickname..." maxlength="16">
+        <input type="text" id="death-room-input" placeholder="Enter server code..." maxlength="6">
+        <p class="input-hint death-hint">Optional — leave blank to stay on this server</p>
+        <div id="death-buttons">
+          <button id="retry-btn">PLAY AGAIN</button>
+          <button id="death-quit-btn">QUIT</button>
+        </div>
+      </div>
+    </div>
+    <div id="pause-screen" class="hidden">
+      <div id="pause-box">
+        <button id="pause-close-btn">&times;</button>
+        <div id="pause-title">MENU</div>
+        <button id="pause-switch-btn">SWITCH SERVER</button>
+        <input type="text" id="pause-room-input" placeholder="Enter server code..." maxlength="6">
+        <button id="pause-quit-btn">QUIT</button>
       </div>
     </div>
   </div>

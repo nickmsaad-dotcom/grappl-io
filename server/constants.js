@@ -7,9 +7,9 @@ export const KILL_BOUNDARY = 9999;      // Effectively disabled — players boun
 // Player
 export const MIN_PLAYER_RADIUS = 18;
 export const MAX_PLAYER_RADIUS = 150;
-export const BASE_SPEED = 480;          // px/s at minimum size
-export const SIZE_SPEED_FACTOR = 0.35;  // How much mass slows you (higher = more penalty)
-export const BASE_ACCEL = 3200;         // px/s^2 at minimum size
+export const BASE_SPEED = 540;          // px/s at minimum size
+export const SIZE_SPEED_FACTOR = 0.22;  // Sqrt-based: bigger = slower but not crawling
+export const BASE_ACCEL = 3600;         // px/s^2 at minimum size
 export const FRICTION = 0.82;
 export const INVULN_DURATION = 1.5;
 
@@ -20,7 +20,7 @@ export const MASS_DECAY_RATE = 0.001;  // Lose this fraction of mass per second 
 export const MIN_MASS = 1.0;
 
 // Food
-export const FOOD_COUNT = 400;          // Total food on map at any time
+export const FOOD_COUNT = 500;          // Total food on map at any time
 export const FOOD_RADIUS = 5;
 export const FOOD_MASS = 0.15;          // Mass gained per food eaten
 export const FOOD_COLORS = [
@@ -155,4 +155,8 @@ export const SPAWN_POINTS = [
   { x: 2000, y: 3330 },
   { x: 670, y: 2000 },
   { x: 3330, y: 2000 },
+  { x: 1300, y: 1300 },
+  { x: 2700, y: 1300 },
+  { x: 1300, y: 2700 },
+  { x: 2700, y: 2700 },
 ];

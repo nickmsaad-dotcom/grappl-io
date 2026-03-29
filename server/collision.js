@@ -1,5 +1,5 @@
 import {
-  ARENA_WIDTH, ARENA_HEIGHT, SIZE_EAT_RATIO,
+  ARENA_WIDTH, ARENA_HEIGHT,
   SPIKE_DAMAGE_RATE, SPIKE_KNOCKBACK, DT, CELL_MIN_MASS
 } from './constants.js';
 import { checkCircleObstacleCollision } from './obstacles.js';
@@ -14,6 +14,7 @@ export function resolvePlayerCollisions(players, onEatCell) {
   for (const p of players.values()) {
     if (!p.alive) continue;
     for (const cell of p.cells) {
+      cell._eaten = false; // Clear from previous tick
       _cellList.push({ cell, player: p });
     }
   }
@@ -27,6 +28,9 @@ export function resolvePlayerCollisions(players, onEatCell) {
       // Skip same-player cells
       if (a.player === b.player) continue;
 
+      // Skip if cell was already eaten this tick
+      if (a.cell._eaten || b.cell._eaten) continue;
+
       const dx = b.cell.x - a.cell.x;
       const dy = b.cell.y - a.cell.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -37,16 +41,32 @@ export function resolvePlayerCollisions(players, onEatCell) {
       if (!a.player.alive || !b.player.alive) continue;
 
       // Check if one cell can eat the other (just needs more mass)
-      if (a.cell.mass > b.cell.mass &&
+      // Tiebreaker for equal mass: player with lower id wins (prevents permanent stalemate)
+      let aEatsB = false;
+      let bEatsA = false;
+
+      if (a.cell.mass > b.cell.mass) {
+        aEatsB = true;
+      } else if (b.cell.mass > a.cell.mass) {
+        bEatsA = true;
+      } else if (a.cell.mass === b.cell.mass) {
+        // Equal mass tiebreaker
+        if (a.player.id < b.player.id) aEatsB = true;
+        else bEatsA = true;
+      }
+
+      if (aEatsB &&
           b.player.invulnTimer <= 0 &&
           !(b.player.effects && b.player.effects.shield > 0)) {
+        b.cell._eaten = true;
         onEatCell(a.player, a.cell, b.player, b.cell);
-      } else if (b.cell.mass > a.cell.mass &&
+      } else if (bEatsA &&
                  a.player.invulnTimer <= 0 &&
                  !(a.player.effects && a.player.effects.shield > 0)) {
+        a.cell._eaten = true;
         onEatCell(b.player, b.cell, a.player, a.cell);
       } else {
-        // Similar size — gentle push apart
+        // Similar size or protected — gentle push apart
         const nx = dx / dist;
         const ny = dy / dist;
         const overlap = touchDist - dist;
