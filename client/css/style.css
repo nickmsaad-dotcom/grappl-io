@@ -1,0 +1,216 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0a0a0a;
+  overflow: hidden;
+  font-family: 'Segoe UI', 'Arial', sans-serif;
+  color: #fff;
+  cursor: crosshair;
+}
+
+#game-canvas {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Join Screen */
+#join-screen {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  background: #0a0a0a;
+}
+
+#join-box {
+  text-align: center;
+}
+
+.logo {
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: #00ffff;
+  text-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff44;
+}
+
+.logo-dot {
+  color: #ff00ff;
+  text-shadow: 0 0 30px #ff00ff, 0 0 60px #ff00ff44;
+}
+
+.tagline {
+  font-size: 18px;
+  color: #888;
+  margin: 8px 0 32px;
+  letter-spacing: 2px;
+}
+
+#name-input {
+  display: block;
+  width: 280px;
+  margin: 0 auto 16px;
+  padding: 12px 16px;
+  font-size: 18px;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  color: #fff;
+  outline: none;
+  text-align: center;
+}
+
+#name-input:focus {
+  border-color: #00ffff;
+  box-shadow: 0 0 15px #00ffff44;
+}
+
+#join-btn {
+  display: block;
+  width: 280px;
+  margin: 0 auto;
+  padding: 14px;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00ffff, #00cc99);
+  color: #0a0a0a;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#join-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 25px #00ffff66;
+}
+
+.controls-hint {
+  margin-top: 24px;
+  font-size: 13px;
+  color: #555;
+}
+
+/* HUD */
+#hud {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#hud.hidden { display: none; }
+
+#leaderboard {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px 16px;
+  min-width: 180px;
+}
+
+.hud-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.lb-entry {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 2px 0;
+}
+
+.lb-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-kills {
+  color: #888;
+  margin-left: 12px;
+}
+
+#round-timer {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 10px #00ffff88;
+}
+
+#killfeed {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: 13px;
+}
+
+.kill-entry {
+  color: #aaa;
+  margin: 2px 0;
+  opacity: 0.9;
+}
+
+.kill-entry .killer { color: #ff3366; font-weight: 600; }
+.kill-entry .victim { color: #888; }
+
+#respawn-msg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 32px;
+  font-weight: 700;
+  color: #ff3366;
+  text-shadow: 0 0 20px #ff336688;
+}
+
+#respawn-msg.hidden { display: none; }
+
+/* Round end overlay */
+.round-end-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 10, 0.7);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.round-end-text {
+  font-size: 48px;
+  font-weight: 900;
+  color: #ffff00;
+  text-shadow: 0 0 30px #ffff0066;
+}

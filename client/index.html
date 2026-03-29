@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grappl.io – Hook, Feed, Grow!</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Join screen -->
+  <div id="join-screen">
+    <div id="join-box">
+      <h1 class="logo">GRAPPL<span class="logo-dot">.</span>IO</h1>
+      <p class="tagline">Hook, Feed, Grow!</p>
+      <input type="text" id="name-input" placeholder="Enter nickname..." maxlength="16" autofocus>
+      <button id="join-btn">PLAY</button>
+      <p class="controls-hint">WASD to move &middot; Click to hook food &middot; Eat smaller players to grow</p>
+    </div>
+  </div>
+
+  <!-- Game canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD overlays -->
+  <div id="hud" class="hidden">
+    <div id="leaderboard">
+      <div class="hud-title">LEADERBOARD</div>
+      <div id="leaderboard-list"></div>
+    </div>
+    <div id="round-timer"></div>
+    <div id="killfeed"></div>
+    <div id="respawn-msg" class="hidden">RESPAWNING...</div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
