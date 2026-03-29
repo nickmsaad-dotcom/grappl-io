@@ -1,7 +1,7 @@
 {
-  "name": "grappl.io",
+  "name": "circleeatgame.io",
   "version": "1.0.0",
-  "description": "Grappl.io – Hook, Swing, Fling! A multiplayer grappling hook game.",
+  "description": "CircleEatGame.io – Hook, Feed, Grow! A multiplayer grappling hook game.",
   "type": "module",
   "scripts": {
     "start": "node server/index.js"

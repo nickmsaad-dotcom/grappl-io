@@ -44,6 +44,10 @@ export function sendInput(input) {
   if (socket) socket.emit('input', input);
 }
 
+export function sendRespawn(name) {
+  if (socket) socket.emit('respawn', { name: name || undefined });
+}
+
 export function getSnapshots() {
   return snapshotBuffer;
 }

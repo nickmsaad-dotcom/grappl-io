@@ -3,17 +3,24 @@ import {
   ARENA_WIDTH, ARENA_HEIGHT,
   FOOD_COUNT, FOOD_RADIUS, FOOD_MASS, FOOD_COLORS,
   MASS_ABSORB_RATIO, MASS_DECAY_RATE, MIN_MASS,
-  OBSTACLES
+  OBSTACLES, SPAWN_POINTS,
+  SPLIT_MIN_MASS, SPLIT_MAX_CELLS, SPLIT_LAUNCH_SPEED, SPLIT_COOLDOWN,
+  MERGE_COOLDOWN, MERGE_DRIFT_SPEED, SELF_PUSH_STRENGTH, CELL_MIN_MASS,
+  POWERUP_SPAWN_INTERVAL, POWERUP_MAX_ON_MAP, POWERUP_DESPAWN_TIME,
+  POWERUP_RADIUS, POWERUP_TYPES, POWERUP_SPEED_MULT,
+  POWERUP_MAGNET_RANGE, POWERUP_MAGNET_PULL,
+  POWERUP_BOMB_RANGE, POWERUP_BOMB_STEAL
 } from './constants.js';
 import { Player } from './player.js';
 import { applyMovement, applyFriction, integrate } from './physics.js';
+// Player is also used for Player.radiusFromMass in eatCell/splitPlayer
 import { fireHook, releaseHook, updateFlyingHook, updateAnchoredHook, updateReelingPlayer, reelHookedFood, checkFoodPickup } from './hook.js';
 import { resolvePlayerCollisions, applySoftBoundary, applyObstacleCollision } from './collision.js';
 import { serializeObstacles } from './obstacles.js';
 import { Round } from './round.js';
 import { getBotName, updateBotInput } from './bot.js';
 
-const MIN_PLAYERS = 10;
+const MIN_PLAYERS = 12;
 let foodIdCounter = 0;
 
 export class Game {
@@ -24,6 +31,9 @@ export class Game {
     this.food = [];
     this.foodById = new Map();
     this.obstacles = serializeObstacles();
+    this.powerups = [];
+    this.powerupIdCounter = 0;
+    this.powerupSpawnTimer = POWERUP_SPAWN_INTERVAL * 0.5; // First spawn sooner
     this.tick = 0;
     this.botIds = new Set();
     let botCounter = 0;
@@ -44,8 +54,17 @@ export class Game {
     // Retry position if it overlaps an obstacle
     let x, y;
     for (let attempt = 0; attempt < 5; attempt++) {
-      x = Math.random() * (ARENA_WIDTH - 40) + 20;
-      y = Math.random() * (ARENA_HEIGHT - 40) + 20;
+      // 30% of food spawns near spawn points for better early game
+      if (Math.random() < 0.3) {
+        const sp = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+        x = sp.x + (Math.random() - 0.5) * 800;
+        y = sp.y + (Math.random() - 0.5) * 800;
+        x = Math.max(20, Math.min(ARENA_WIDTH - 20, x));
+        y = Math.max(20, Math.min(ARENA_HEIGHT - 20, y));
+      } else {
+        x = Math.random() * (ARENA_WIDTH - 40) + 20;
+        y = Math.random() * (ARENA_HEIGHT - 40) + 20;
+      }
       let blocked = false;
       for (const obs of OBSTACLES) {
         if (obs.type === 'pillar') {
@@ -87,6 +106,126 @@ export class Game {
     }
   }
 
+  // --- Power-up system ---
+  spawnPowerup() {
+    if (this.powerups.length >= POWERUP_MAX_ON_MAP) return;
+    const typeInfo = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+    // Find valid position (not inside obstacles)
+    let x, y;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      x = Math.random() * (ARENA_WIDTH - 200) + 100;
+      y = Math.random() * (ARENA_HEIGHT - 200) + 100;
+      let blocked = false;
+      for (const obs of OBSTACLES) {
+        if (obs.type === 'pillar') {
+          const dx = x - obs.x, dy = y - obs.y;
+          if (dx * dx + dy * dy < (obs.radius + POWERUP_RADIUS + 20) ** 2) { blocked = true; break; }
+        } else {
+          if (x > obs.x - 20 && x < obs.x + obs.w + 20 && y > obs.y - 20 && y < obs.y + obs.h + 20) { blocked = true; break; }
+        }
+      }
+      if (!blocked) break;
+    }
+    this.powerups.push({
+      id: this.powerupIdCounter++,
+      x, y,
+      type: typeInfo.type,
+      color: typeInfo.color,
+      duration: typeInfo.duration,
+      label: typeInfo.label,
+      timeLeft: POWERUP_DESPAWN_TIME,
+    });
+  }
+
+  updatePowerups() {
+    // Despawn timer
+    for (let i = this.powerups.length - 1; i >= 0; i--) {
+      this.powerups[i].timeLeft -= DT;
+      if (this.powerups[i].timeLeft <= 0) {
+        this.powerups.splice(i, 1);
+      }
+    }
+
+    // Spawn timer
+    this.powerupSpawnTimer -= DT;
+    if (this.powerupSpawnTimer <= 0) {
+      this.spawnPowerup();
+      this.powerupSpawnTimer = POWERUP_SPAWN_INTERVAL;
+    }
+
+    // Collection check — any cell can pick up powerups
+    for (const player of this.players.values()) {
+      if (!player.alive) continue;
+      for (let i = this.powerups.length - 1; i >= 0; i--) {
+        const pu = this.powerups[i];
+        let collected = false;
+        for (const cell of player.cells) {
+          const dx = cell.x - pu.x;
+          const dy = cell.y - pu.y;
+          if (dx * dx + dy * dy < (cell.radius + POWERUP_RADIUS) ** 2) {
+            collected = true;
+            break;
+          }
+        }
+        if (collected) {
+          this.collectPowerup(player, pu);
+          this.powerups.splice(i, 1);
+        }
+      }
+    }
+
+    // Tick player effects
+    for (const player of this.players.values()) {
+      if (!player.alive) continue;
+      if (player.effects.speed > 0) player.effects.speed -= DT;
+      if (player.effects.shield > 0) player.effects.shield -= DT;
+      if (player.effects.magnet > 0) {
+        player.effects.magnet -= DT;
+        // Pull nearby food toward each cell
+        for (const cell of player.cells) {
+          for (const f of this.food) {
+            if (f.dead) continue;
+            const dx = cell.x - f.x;
+            const dy = cell.y - f.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < POWERUP_MAGNET_RANGE && dist > 1) {
+              f.x += (dx / dist) * POWERUP_MAGNET_PULL * DT;
+              f.y += (dy / dist) * POWERUP_MAGNET_PULL * DT;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  collectPowerup(player, pu) {
+    if (pu.type === 'speed') {
+      player.effects.speed = pu.duration;
+    } else if (pu.type === 'shield') {
+      player.effects.shield = pu.duration;
+    } else if (pu.type === 'magnet') {
+      player.effects.magnet = pu.duration;
+    } else if (pu.type === 'bomb') {
+      // Instant: steal 30% mass from nearby players
+      for (const other of this.players.values()) {
+        if (other.id === player.id || !other.alive) continue;
+        const dx = player.x - other.x;
+        const dy = player.y - other.y;
+        if (dx * dx + dy * dy < POWERUP_BOMB_RANGE ** 2) {
+          const stolen = other.mass * POWERUP_BOMB_STEAL;
+          // Remove proportionally from each cell
+          for (const cell of other.cells) {
+            const ratio = cell.mass / other.mass;
+            cell.mass = Math.max(CELL_MIN_MASS, cell.mass - stolen * ratio);
+            cell.radius = Player.radiusFromMass(cell.mass);
+          }
+          other.updateFromCells();
+          player.addMass(stolen);
+        }
+      }
+    }
+  }
+
   // --- Bot system ---
   fillBots() {
     while (this.players.size < MIN_PLAYERS) {
@@ -124,6 +263,15 @@ export class Game {
     this.fillBots();
   }
 
+  respawnPlayer(id, newName) {
+    const player = this.players.get(id);
+    if (!player || player.alive) return;
+    if (newName && typeof newName === 'string') {
+      player.name = newName.slice(0, 16) || player.name;
+    }
+    player.spawn();
+  }
+
   handleInput(id, data) {
     const player = this.players.get(id);
     if (!player || !player.alive || typeof data !== 'object' || data === null) return;
@@ -141,6 +289,11 @@ export class Game {
 
     if (data.fire) player.input.fire = true;
     if (data.release) player.input.release = true;
+    if (data.split) player.input.split = true;
+
+    // Track input seq for client-side prediction reconciliation
+    const seq = Number(data.seq);
+    if (Number.isFinite(seq)) player.lastSeq = seq;
   }
 
   // --- Main game loop ---
@@ -155,13 +308,14 @@ export class Game {
     // Update bot AI
     for (const id of this.botIds) {
       const bot = this.players.get(id);
-      if (bot) updateBotInput(bot, this.players, this.food);
+      if (bot) updateBotInput(bot, this.players, this.food, this.powerups);
     }
 
     for (const player of this.players.values()) {
       if (!player.alive) {
         player.respawnTimer -= DT;
-        if (player.respawnTimer <= 0) {
+        // Only auto-respawn bots; human players wait for input
+        if (player.respawnTimer <= 0 && player.isBot) {
           player.spawn();
         }
         continue;
@@ -179,13 +333,21 @@ export class Game {
         player.input.release = false;
       }
 
-      // Movement
+      // Split
+      if (player.input.split) {
+        this.splitPlayer(player);
+        player.input.split = false;
+      }
+
+      // Movement (per cell)
       applyMovement(player);
 
-      // Mass decay (keeps big players in check)
-      if (player.mass > MIN_MASS) {
-        player.mass = Math.max(MIN_MASS, player.mass - player.mass * MASS_DECAY_RATE * DT);
-        player.updateRadius();
+      // Mass decay per cell
+      for (const cell of player.cells) {
+        if (cell.mass > CELL_MIN_MASS) {
+          cell.mass = Math.max(CELL_MIN_MASS, cell.mass - cell.mass * MASS_DECAY_RATE * DT);
+          cell.radius = Player.radiusFromMass(cell.mass);
+        }
       }
     }
 
@@ -199,18 +361,37 @@ export class Game {
       checkFoodPickup(player, this.food);
     }
 
-    // Physics
+    // Physics (per cell)
     for (const player of this.players.values()) {
       if (!player.alive) continue;
       applyFriction(player);
       integrate(player);
       applyObstacleCollision(player);
       applySoftBoundary(player);
+
+      // Check if all cells destroyed by spikes
+      if (player.cells.length === 0) {
+        player.alive = false;
+        player.deaths++;
+        player.respawnTimer = 1.0;
+        if (player.hookState !== 'IDLE') releaseHook(player);
+        continue;
+      }
     }
 
-    // Player eating collisions
-    resolvePlayerCollisions(this.players, (eater, victim) => {
-      this.eatPlayer(eater, victim);
+    // Self-cell collisions (push apart / merge)
+    for (const player of this.players.values()) {
+      if (!player.alive) continue;
+      this.resolveSelfCellCollisions(player);
+      player.updateFromCells();
+    }
+
+    // Power-ups (spawn, collect, tick effects)
+    this.updatePowerups();
+
+    // Player eating collisions (cell-vs-cell)
+    resolvePlayerCollisions(this.players, (eaterPlayer, eaterCell, victimPlayer, victimCell) => {
+      this.eatCell(eaterPlayer, eaterCell, victimPlayer, victimCell);
     });
 
     // Broadcast state
@@ -219,21 +400,124 @@ export class Game {
     }
   }
 
-  eatPlayer(eater, victim) {
-    victim.alive = false;
-    victim.deaths++;
-    victim.respawnTimer = 1.0;
+  splitPlayer(player) {
+    if (player.cells.length >= SPLIT_MAX_CELLS) return;
+    if (player.splitCooldown > 0) return;
 
-    // Transfer mass
-    eater.addMass(victim.mass * MASS_ABSORB_RATIO);
-    eater.kills++;
-
-    this.round.addKill(eater.name, victim.name);
-
-    // Release victim's hook
-    if (victim.hookState !== 'IDLE') {
-      releaseHook(victim);
+    // Find largest cell that can split
+    let largest = null;
+    for (const cell of player.cells) {
+      if (cell.mass >= SPLIT_MIN_MASS * 2) {
+        if (!largest || cell.mass > largest.mass) largest = cell;
+      }
     }
+    if (!largest) return;
+
+    const halfMass = largest.mass / 2;
+    largest.mass = halfMass;
+    largest.radius = Player.radiusFromMass(halfMass);
+
+    const angle = player.input.mouseAngle;
+    const newCell = {
+      x: largest.x + Math.cos(angle) * largest.radius,
+      y: largest.y + Math.sin(angle) * largest.radius,
+      vx: largest.vx + Math.cos(angle) * SPLIT_LAUNCH_SPEED,
+      vy: largest.vy + Math.sin(angle) * SPLIT_LAUNCH_SPEED,
+      mass: halfMass,
+      radius: Player.radiusFromMass(halfMass),
+      mergeTimer: MERGE_COOLDOWN,
+    };
+
+    player.cells.push(newCell);
+    player.splitCooldown = SPLIT_COOLDOWN;
+    player.updateFromCells();
+  }
+
+  resolveSelfCellCollisions(player) {
+    const cells = player.cells;
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const a = cells[i];
+        const b = cells[j];
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue;
+
+        const touchDist = a.radius + b.radius;
+
+        if (a.mergeTimer <= 0 && b.mergeTimer <= 0) {
+          // Both merge-ready: drift together
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.vx += nx * MERGE_DRIFT_SPEED * DT;
+          a.vy += ny * MERGE_DRIFT_SPEED * DT;
+          b.vx -= nx * MERGE_DRIFT_SPEED * DT;
+          b.vy -= ny * MERGE_DRIFT_SPEED * DT;
+
+          // Merge on overlap
+          if (dist < touchDist * 0.5) {
+            // Absorb smaller into larger
+            if (a.mass >= b.mass) {
+              a.mass += b.mass;
+              a.radius = Player.radiusFromMass(a.mass);
+              cells.splice(j, 1);
+              j--;
+            } else {
+              b.mass += a.mass;
+              b.radius = Player.radiusFromMass(b.mass);
+              cells.splice(i, 1);
+              i--;
+              break;
+            }
+          }
+        } else if (dist < touchDist) {
+          // Push apart (not merge-ready)
+          const overlap = touchDist - dist;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+          a.vx -= nx * SELF_PUSH_STRENGTH * DT;
+          a.vy -= ny * SELF_PUSH_STRENGTH * DT;
+          b.vx += nx * SELF_PUSH_STRENGTH * DT;
+          b.vy += ny * SELF_PUSH_STRENGTH * DT;
+        }
+      }
+    }
+  }
+
+  eatCell(eaterPlayer, eaterCell, victimPlayer, victimCell) {
+    // Remove victim cell
+    const idx = victimPlayer.cells.indexOf(victimCell);
+    if (idx !== -1) victimPlayer.cells.splice(idx, 1);
+
+    // Transfer mass to eater cell
+    const gained = victimCell.mass * MASS_ABSORB_RATIO;
+    eaterCell.mass += gained;
+    eaterCell.radius = Player.radiusFromMass(eaterCell.mass);
+    eaterPlayer.score += gained;
+
+    // If victim has no cells left → death
+    if (victimPlayer.cells.length === 0) {
+      victimPlayer.alive = false;
+      victimPlayer.deaths++;
+      victimPlayer.respawnTimer = 1.0;
+
+      eaterPlayer.kills++;
+      eaterPlayer.killStreak++;
+      this.round.addKill(eaterPlayer.name, victimPlayer.name);
+
+      if (victimPlayer.hookState !== 'IDLE') {
+        releaseHook(victimPlayer);
+      }
+    }
+
+    eaterPlayer.updateFromCells();
+    victimPlayer.updateFromCells();
   }
 
   broadcast() {
@@ -243,8 +527,9 @@ export class Game {
     }
 
     // Leaderboard sorted by score (total mass consumed)
+    // Leaderboard sorted by current size (displayMass)
     const leaderboard = playerList
-      .map(p => ({ name: p.name, score: p.score, color: p.color }))
+      .map(p => ({ id: p.id, name: p.name, score: p.displayMass, color: p.color }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
 
@@ -254,11 +539,16 @@ export class Game {
       ? this.food.filter(f => !f.dead).map(f => ({ id: f.id, x: f.x, y: f.y, color: f.color, radius: f.radius }))
       : undefined;
 
+    const powerupList = this.powerups.map(pu => ({
+      id: pu.id, x: pu.x, y: pu.y, type: pu.type, color: pu.color, label: pu.label,
+    }));
+
     const snapshot = {
       tick: this.tick,
       players: playerList,
       round: this.round.serialize(),
       leaderboard,
+      powerups: powerupList,
     };
     if (foodList) snapshot.food = foodList;
 

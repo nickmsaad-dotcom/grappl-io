@@ -34,6 +34,11 @@ io.on('connection', (socket) => {
     game.handleInput(socket.id, data);
   });
 
+  socket.on('respawn', (data) => {
+    const newName = data && typeof data.name === 'string' ? data.name.slice(0, 16) : null;
+    game.respawnPlayer(socket.id, newName);
+  });
+
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     game.removePlayer(socket.id);
@@ -42,5 +47,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`Grappl.io server running on http://localhost:${PORT}`);
+  console.log(`CircleEatGame.io server running on http://localhost:${PORT}`);
 });

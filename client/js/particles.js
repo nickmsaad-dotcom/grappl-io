@@ -111,7 +111,8 @@ export function spawnFoodAbsorb(x, y, color) {
 }
 
 export function updateParticles(dt) {
-  for (let i = particles.length - 1; i >= 0; i--) {
+  let i = particles.length;
+  while (i-- > 0) {
     const p = particles[i];
     p.x += p.vx * dt;
     p.y += p.vy * dt;
@@ -120,24 +121,32 @@ export function updateParticles(dt) {
     p.life -= dt;
 
     if (p.life <= 0) {
-      particles.splice(i, 1);
+      // Swap-and-pop: O(1) removal instead of O(n) splice
+      particles[i] = particles[particles.length - 1];
+      particles.pop();
     }
   }
 }
 
-export function drawParticles(ctx) {
+export function drawParticles(ctx, viewLeft, viewTop, viewRight, viewBottom) {
+  // No shadowBlur on particles — use slightly larger radius for soft glow effect
+  ctx.shadowBlur = 0;
   for (const p of particles) {
+    // Viewport culling
+    if (p.x < viewLeft - 20 || p.x > viewRight + 20 ||
+        p.y < viewTop - 20 || p.y > viewBottom + 20) continue;
     const alpha = Math.max(0, p.life / p.maxLife);
-    ctx.globalAlpha = alpha;
-    ctx.shadowColor = p.color;
-    ctx.shadowBlur = 8;
+    ctx.globalAlpha = alpha * 0.5;
     ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * alpha + 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius * alpha, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
 }
 
 export function getParticles() {

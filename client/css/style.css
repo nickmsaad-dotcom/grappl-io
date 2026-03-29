@@ -141,11 +141,19 @@ body {
   padding: 2px 0;
 }
 
+.lb-rank {
+  color: #555;
+  font-size: 12px;
+  min-width: 22px;
+  margin-right: 4px;
+}
+
 .lb-name {
-  max-width: 120px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
 .lb-kills {
@@ -182,18 +190,88 @@ body {
 .kill-entry .killer { color: #ff3366; font-weight: 600; }
 .kill-entry .victim { color: #888; }
 
-#respawn-msg {
+/* Death / Respawn screen */
+#death-screen {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 32px;
-  font-weight: 700;
-  color: #ff3366;
-  text-shadow: 0 0 20px #ff336688;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
+  z-index: 20;
 }
 
-#respawn-msg.hidden { display: none; }
+#death-screen.hidden { display: none; }
+
+#death-box {
+  text-align: center;
+  background: rgba(15, 15, 20, 0.92);
+  border: 1px solid #ffffff18;
+  border-radius: 16px;
+  padding: 36px 44px;
+  min-width: 300px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+#death-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #ff3366;
+  text-shadow: 0 0 20px #ff336644;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+#death-stats {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+#rename-input {
+  display: block;
+  width: 240px;
+  margin: 0 auto 12px;
+  padding: 10px 14px;
+  font-size: 15px;
+  background: #1a1a1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #fff;
+  outline: none;
+  text-align: center;
+}
+
+#rename-input:focus {
+  border-color: #00ffff;
+  box-shadow: 0 0 12px #00ffff33;
+}
+
+#retry-btn {
+  display: block;
+  width: 240px;
+  margin: 0 auto;
+  padding: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ff3366, #ff6633);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#retry-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 20px #ff336666;
+}
 
 /* Round end overlay */
 .round-end-overlay {

@@ -2,13 +2,31 @@
 
 import { getSnapshots, getMyId } from './net.js';
 
-const INTERP_DELAY = 50; // ms behind latest snapshot
+const INTERP_DELAY = 25; // ms behind latest snapshot (60Hz broadcast)
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function lerpCell(a, b, t) {
+  return {
+    x: lerp(a.x, b.x, t),
+    y: lerp(a.y, b.y, t),
+    vx: lerp(a.vx, b.vx, t),
+    vy: lerp(a.vy, b.vy, t),
+    radius: lerp(a.radius, b.radius, t),
+    mass: lerp(a.mass, b.mass, t),
+  };
+}
+
 function lerpPlayer(a, b, t) {
+  // Lerp cells by index
+  const cells = b.cells ? b.cells.map((bc, i) => {
+    const ac = a.cells && a.cells[i];
+    if (!ac) return bc; // New cell from split — no lerp
+    return lerpCell(ac, bc, t);
+  }) : [];
+
   return {
     ...b,
     x: lerp(a.x, b.x, t),
@@ -20,6 +38,7 @@ function lerpPlayer(a, b, t) {
     hookY: lerp(a.hookY, b.hookY, t),
     anchorX: b.anchorX,
     anchorY: b.anchorY,
+    cells,
   };
 }
 
@@ -59,7 +78,7 @@ export function getInterpolatedState() {
     const prevPlayer = prev.players.find(p => p.id === nextPlayer.id);
     if (!prevPlayer) return nextPlayer;
 
-    // Local player uses latest state
+    // Local player uses latest server state (camera smoothing handles feel)
     if (nextPlayer.id === myId) {
       return nextPlayer;
     }
@@ -70,6 +89,5 @@ export function getInterpolatedState() {
   return {
     ...next,
     players: interpolatedPlayers,
-    // Food doesn't need interpolation — it's static or moves fast
   };
 }

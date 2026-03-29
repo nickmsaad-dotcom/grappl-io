@@ -6,15 +6,21 @@ let mouseY = 0;
 let mouseAngle = 0;
 let fireQueued = false;
 let releaseQueued = false;
+let splitQueued = false;
 let canvasRect = { left: 0, top: 0 };
 let cameraTransform = { offsetX: 0, offsetY: 0, scale: 1 };
 
 export function initInput(canvas) {
   window.addEventListener('keydown', (e) => {
     keys[e.key] = true;
-    // Prevent scrolling
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+    // Prevent scrolling and macOS accent picker on held keys
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ',
+         'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
       e.preventDefault();
+    }
+    // Edge-detect Space for split
+    if (e.key === ' ' && !e.repeat) {
+      splitQueued = true;
     }
   });
 
@@ -69,10 +75,12 @@ export function getInput(playerX, playerY) {
     mouseAngle: angle,
     fire: fireQueued,
     release: releaseQueued,
+    split: splitQueued,
   };
 
   fireQueued = false;
   releaseQueued = false;
+  splitQueued = false;
 
   return input;
 }

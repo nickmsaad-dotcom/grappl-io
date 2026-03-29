@@ -1,9 +1,10 @@
 // Bot AI: seek food, flee bigger players, chase smaller ones, avoid obstacles
 
-import { ARENA_WIDTH, ARENA_HEIGHT, SIZE_EAT_RATIO, OBSTACLES } from './constants.js';
+import { ARENA_WIDTH, ARENA_HEIGHT, SIZE_EAT_RATIO, OBSTACLES, SPLIT_MIN_MASS, SPLIT_MAX_CELLS } from './constants.js';
+import { Player } from './player.js';
 
 const BOT_NAMES = [
-  'Botley', 'NomNom', 'SwingKing', 'GrabBot', 'Grapplr',
+  'Botley', 'NomNom', 'SwingKing', 'GrabBot', 'Chomper',
   'YeetBot', 'Muncher', 'NPC_Andy', 'EzTarget', 'Flingus',
   'Snacker', 'Swoosh', 'Dangles', 'Zippy', 'Bonkers',
 ];
@@ -90,7 +91,7 @@ function setKeysFromAngle(angle, keys) {
   if (Math.sin(angle) < -0.3) keys.w = true;
 }
 
-export function updateBotInput(bot, players, food) {
+export function updateBotInput(bot, players, food, powerups) {
   if (!bot.alive) return;
 
   const keys = { w: false, a: false, s: false, d: false };
@@ -111,11 +112,11 @@ export function updateBotInput(bot, players, food) {
     const dy = p.y - bot.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (p.radius > bot.radius * SIZE_EAT_RATIO && dist < threatDist) {
+    if (p.mass > bot.mass && dist < threatDist) {
       threat = p;
       threatDist = dist;
     }
-    if (bot.radius > p.radius * SIZE_EAT_RATIO && dist < preyDist) {
+    if (bot.mass > p.mass && dist < preyDist) {
       prey = p;
       preyDist = dist;
     }
@@ -175,7 +176,30 @@ export function updateBotInput(bot, players, food) {
       fire = true;
     }
   } else {
+    // Check for nearby powerups first
+    let nearestPowerup = null;
+    let nearestPuDist = 500;
+    if (powerups) {
+      for (const pu of powerups) {
+        const dx = pu.x - bot.x;
+        const dy = pu.y - bot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < nearestPuDist && !isPathBlocked(bot.x, bot.y, pu.x, pu.y, bot.radius)) {
+          nearestPuDist = dist;
+          nearestPowerup = pu;
+        }
+      }
+    }
+    if (nearestPowerup) {
+      const dx = nearestPowerup.x - bot.x;
+      const dy = nearestPowerup.y - bot.y;
+      const angle = Math.atan2(dy + avoid.y * 2, dx + avoid.x * 2);
+      mouseAngle = Math.atan2(dy, dx);
+      setKeysFromAngle(angle, keys);
+    }
+
     // Seek nearest food — skip food behind obstacles
+    else {
     let nearestFood = null;
     let nearestFoodDist = Infinity;
 
@@ -244,6 +268,7 @@ export function updateBotInput(bot, players, food) {
       setKeysFromAngle(wanderAngle, keys);
       mouseAngle = wanderAngle;
     }
+    } // close food-seeking else
   }
 
   // Release hook when anchored after building swing momentum
@@ -260,6 +285,25 @@ export function updateBotInput(bot, players, food) {
     bot._botSwingTimer = 0;
   }
 
+  // Bots split to chase close prey
+  let split = false;
+  if (bot.splitCooldown <= 0 && bot.cells.length < SPLIT_MAX_CELLS) {
+    // Find largest cell
+    let largestMass = 0;
+    for (const c of bot.cells) {
+      if (c.mass > largestMass) largestMass = c.mass;
+    }
+    if (largestMass >= SPLIT_MIN_MASS * 2) {
+      if (prey && preyDist < 150 && Math.random() < 0.02) {
+        // Check if half would be big enough to eat prey
+        const halfMass = largestMass / 2;
+        if (halfMass > prey.mass) {
+          split = true;
+        }
+      }
+    }
+  }
+
   bot._botAngle = mouseAngle;
-  bot.input = { keys, mouseAngle, fire, release };
+  bot.input = { keys, mouseAngle, fire, release, split };
 }

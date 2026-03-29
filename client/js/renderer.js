@@ -5,7 +5,53 @@ import { drawParticles } from './particles.js';
 import { getMyId, getObstacles } from './net.js';
 
 let screenShake = { x: 0, y: 0, intensity: 0 };
-let camera = { x: 0, y: 0, scale: 1 };
+
+// Persistent smooth camera state
+let camSmooth = { x: ARENA_WIDTH / 2, y: ARENA_HEIGHT / 2, scale: 1 };
+
+// Frame time — computed once per render, used everywhere
+let frameTime = 0;
+
+// --- Floating score indicators ---
+const floatingTexts = [];
+const MAX_FLOATING_TEXTS = 30;
+
+export function spawnFloatingText(x, y, text, color) {
+  if (floatingTexts.length >= MAX_FLOATING_TEXTS) floatingTexts.shift();
+  floatingTexts.push({
+    x, y,
+    vy: -80,
+    text,
+    color,
+    life: 1.0,
+    maxLife: 1.0,
+  });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y += ft.vy * dt;
+    ft.life -= dt;
+    if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+function drawFloatingTexts(ctx, vl, vt, vr, vb) {
+  for (const ft of floatingTexts) {
+    if (ft.x < vl - 50 || ft.x > vr + 50 || ft.y < vt - 50 || ft.y > vb + 50) continue;
+    const alpha = Math.max(0, ft.life / ft.maxLife);
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#000000aa';
+    ctx.lineWidth = 3;
+    ctx.strokeText(ft.text, ft.x, ft.y);
+    ctx.fillStyle = ft.color;
+    ctx.fillText(ft.text, ft.x, ft.y);
+  }
+  ctx.globalAlpha = 1;
+}
 
 // Cache text color per player color — black for bright neons, white for dark
 const textColorCache = {};
@@ -15,7 +61,6 @@ function getTextColor(hexColor) {
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  // Perceived luminance (human eye is more sensitive to green)
   const lum = r * 0.299 + g * 0.587 + b * 0.114;
   const result = lum > 160 ? '#000000cc' : '#ffffffcc';
   textColorCache[hexColor] = result;
@@ -38,31 +83,105 @@ function updateScreenShake() {
   }
 }
 
-export function render(ctx, canvas, state) {
+// --- Death animation state ---
+const deathAnims = new Map(); // id -> { x, y, radius, color, alpha, timer }
+const DEATH_ANIM_DURATION = 0.3;
+
+export function startDeathAnim(id, x, y, radius, color) {
+  deathAnims.set(id, { x, y, radius, color, alpha: 1, timer: DEATH_ANIM_DURATION });
+}
+
+function updateDeathAnims(dt) {
+  for (const [id, d] of deathAnims) {
+    d.timer -= dt;
+    d.alpha = Math.max(0, d.timer / DEATH_ANIM_DURATION);
+    d.radius *= 0.92;
+    if (d.timer <= 0) deathAnims.delete(id);
+  }
+}
+
+function drawDeathAnims(ctx, vl, vt, vr, vb) {
+  for (const d of deathAnims.values()) {
+    if (d.x < vl - 50 || d.x > vr + 50 || d.y < vt - 50 || d.y > vb + 50) continue;
+    ctx.globalAlpha = d.alpha * 0.6;
+    ctx.fillStyle = d.color;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// --- Hitstop ---
+let hitStopTimer = 0;
+export function triggerHitStop(duration) {
+  hitStopTimer = Math.max(hitStopTimer, duration);
+}
+
+export function getHitStopActive() {
+  return hitStopTimer > 0;
+}
+
+export function render(ctx, canvas, state, dt) {
   if (!state) return { offsetX: 0, offsetY: 0, scale: 1 };
+
+  frameTime = performance.now();
+
+  // Hitstop: skip physics advancement but still render
+  if (hitStopTimer > 0) {
+    hitStopTimer -= dt;
+    dt = 0;
+  }
 
   const myId = getMyId();
   const me = state.players.find(p => p.id === myId);
   updateScreenShake();
+  updateFloatingTexts(dt || 0.016);
+  updateDeathAnims(dt || 0.016);
 
-  // Camera follows local player with zoom based on size
-  let camX = ARENA_WIDTH / 2;
-  let camY = ARENA_HEIGHT / 2;
-  let zoomScale = 1;
+  // Camera target — average position of all cells for multi-cell follow
+  let targetX = ARENA_WIDTH / 2;
+  let targetY = ARENA_HEIGHT / 2;
+  let targetZoom = 1;
 
   if (me && me.alive) {
-    camX = me.x;
-    camY = me.y;
-    // Zoom out as player grows
-    zoomScale = Math.max(0.35, 1 - (me.radius - 18) / 300);
+    const cells = me.cells && me.cells.length > 0 ? me.cells : [{ x: me.x, y: me.y, radius: me.radius }];
+    let sumX = 0, sumY = 0, maxR = 0;
+    for (const c of cells) {
+      sumX += c.x;
+      sumY += c.y;
+      if (c.radius > maxR) maxR = c.radius;
+    }
+    targetX = sumX / cells.length;
+    targetY = sumY / cells.length;
+    // Zoom out more with more cells spread out
+    const spread = cells.length > 1 ? Math.sqrt(
+      cells.reduce((s, c) => s + (c.x - targetX) ** 2 + (c.y - targetY) ** 2, 0) / cells.length
+    ) : 0;
+    targetZoom = Math.max(0.25, 1 - (maxR - 18) / 300 - spread / 1500);
   }
 
-  const baseScale = Math.min(canvas.width, canvas.height) / 800;
-  const scale = baseScale * zoomScale;
-  const offsetX = canvas.width / 2 - camX * scale + screenShake.x;
-  const offsetY = canvas.height / 2 - camY * scale + screenShake.y;
+  // Smooth camera follow (lerp toward target)
+  const camSpeed = 10;
+  const safeDt = dt || 0.016;
+  const lerpFactor = 1 - Math.exp(-camSpeed * safeDt);
+  camSmooth.x += (targetX - camSmooth.x) * lerpFactor;
+  camSmooth.y += (targetY - camSmooth.y) * lerpFactor;
 
-  camera = { x: camX, y: camY, scale };
+  const baseScale = Math.min(canvas.width, canvas.height) / 800;
+  const targetScale = baseScale * targetZoom;
+  camSmooth.scale += (targetScale - camSmooth.scale) * (1 - Math.exp(-5 * safeDt));
+
+  const scale = camSmooth.scale;
+  const offsetX = canvas.width / 2 - camSmooth.x * scale + screenShake.x;
+  const offsetY = canvas.height / 2 - camSmooth.y * scale + screenShake.y;
+
+  // Compute viewport bounds in world space (with margin)
+  const margin = 100;
+  const viewLeft = camSmooth.x - canvas.width / scale / 2 - margin;
+  const viewRight = camSmooth.x + canvas.width / scale / 2 + margin;
+  const viewTop = camSmooth.y - canvas.height / scale / 2 - margin;
+  const viewBottom = camSmooth.y + canvas.height / scale / 2 + margin;
 
   // Clear
   ctx.fillStyle = '#0a0a0a';
@@ -72,38 +191,68 @@ export function render(ctx, canvas, state) {
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
 
-  // Draw grid
-  drawGrid(ctx, camX, camY, canvas.width / scale, canvas.height / scale);
+  // Draw grid (batched)
+  drawGrid(ctx, camSmooth.x, camSmooth.y, canvas.width / scale, canvas.height / scale);
 
   // Draw arena boundary
   drawArenaBoundary(ctx);
 
-  // Draw obstacles
-  drawObstacles(ctx);
+  // Draw obstacles (viewport culled)
+  drawObstacles(ctx, viewLeft, viewTop, viewRight, viewBottom);
 
-  // Draw food
+  // Draw food (batched by color, viewport culled)
   if (state.food) {
-    drawFood(ctx, state.food);
+    drawFood(ctx, state.food, viewLeft, viewTop, viewRight, viewBottom);
   }
 
-  // Draw hooks (behind players)
+  // Draw power-ups
+  if (state.powerups) {
+    drawPowerups(ctx, state.powerups, viewLeft, viewTop, viewRight, viewBottom);
+  }
+
+  // Draw hooks (behind players, viewport culled)
   for (const player of state.players) {
     if (player.hookState !== 'IDLE' && player.alive) {
       drawHook(ctx, player, player.id === myId);
     }
   }
 
-  // Draw particles
-  drawParticles(ctx);
+  // Draw particles (viewport culled inside drawParticles)
+  drawParticles(ctx, viewLeft, viewTop, viewRight, viewBottom);
 
-  // Draw players
+  // Draw death animations
+  drawDeathAnims(ctx, viewLeft, viewTop, viewRight, viewBottom);
+
+  // Draw players (viewport culled) — draw each cell
+  const leaderId = state.leaderboard && state.leaderboard.length > 0 ? state.leaderboard[0].id : null;
   for (const player of state.players) {
-    if (player.alive) {
-      drawPlayer(ctx, player, player.id === myId);
+    if (!player.alive) continue;
+    const cells = player.cells && player.cells.length > 0
+      ? player.cells
+      : [{ x: player.x, y: player.y, vx: player.vx, vy: player.vy, radius: player.radius, mass: player.mass }];
+
+    // Find largest cell for name/crown
+    let largestCell = cells[0];
+    for (let i = 1; i < cells.length; i++) {
+      if (cells[i].mass > largestCell.mass) largestCell = cells[i];
+    }
+
+    for (const cell of cells) {
+      if (cell.x + cell.radius < viewLeft || cell.x - cell.radius > viewRight ||
+          cell.y + cell.radius < viewTop || cell.y - cell.radius > viewBottom) continue;
+      const isLargest = cell === largestCell;
+      drawCell(ctx, cell, player, player.id === myId, player.id === leaderId && isLargest, isLargest);
     }
   }
 
+  // Floating score texts (in world space, viewport culled)
+  drawFloatingTexts(ctx, viewLeft, viewTop, viewRight, viewBottom);
+
   ctx.restore();
+
+  // Minimap + controls legend (screen space, after ctx.restore)
+  drawMinimap(ctx, canvas, state, myId);
+  drawControlsLegend(ctx, canvas);
 
   return { offsetX, offsetY, scale };
 }
@@ -118,88 +267,139 @@ function drawGrid(ctx, cx, cy, viewW, viewH) {
   ctx.strokeStyle = '#151515';
   ctx.lineWidth = 1;
 
+  // Batch all vertical lines into one path
+  ctx.beginPath();
   for (let x = startX; x <= endX; x += gridSize) {
     if (x < 0 || x > ARENA_WIDTH) continue;
-    ctx.beginPath();
     ctx.moveTo(x, Math.max(0, startY));
     ctx.lineTo(x, Math.min(ARENA_HEIGHT, endY));
-    ctx.stroke();
   }
+  // Batch all horizontal lines into same path
   for (let y = startY; y <= endY; y += gridSize) {
     if (y < 0 || y > ARENA_HEIGHT) continue;
-    ctx.beginPath();
     ctx.moveTo(Math.max(0, startX), y);
     ctx.lineTo(Math.min(ARENA_WIDTH, endX), y);
-    ctx.stroke();
   }
+  ctx.stroke();
 }
 
 function drawArenaBoundary(ctx) {
-  // Pulsing arena boundary
-  const pulse = 0.3 + Math.sin(performance.now() * 0.002) * 0.15;
+  const pulse = 0.3 + Math.sin(frameTime * 0.002) * 0.15;
   ctx.shadowColor = '#00ffff';
   ctx.shadowBlur = 15 + pulse * 15;
   ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`;
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-  // Corner accents
-  const cornerSize = 40;
+  // Corner accents — batched into one path
+  const cs = 40;
   ctx.lineWidth = 2;
   ctx.strokeStyle = `rgba(0, 255, 255, ${pulse + 0.2})`;
-  // Top-left
   ctx.beginPath();
-  ctx.moveTo(0, cornerSize); ctx.lineTo(0, 0); ctx.lineTo(cornerSize, 0);
-  ctx.stroke();
-  // Top-right
-  ctx.beginPath();
-  ctx.moveTo(ARENA_WIDTH - cornerSize, 0); ctx.lineTo(ARENA_WIDTH, 0); ctx.lineTo(ARENA_WIDTH, cornerSize);
-  ctx.stroke();
-  // Bottom-left
-  ctx.beginPath();
-  ctx.moveTo(0, ARENA_HEIGHT - cornerSize); ctx.lineTo(0, ARENA_HEIGHT); ctx.lineTo(cornerSize, ARENA_HEIGHT);
-  ctx.stroke();
-  // Bottom-right
-  ctx.beginPath();
-  ctx.moveTo(ARENA_WIDTH - cornerSize, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT - cornerSize);
+  ctx.moveTo(0, cs); ctx.lineTo(0, 0); ctx.lineTo(cs, 0);
+  ctx.moveTo(ARENA_WIDTH - cs, 0); ctx.lineTo(ARENA_WIDTH, 0); ctx.lineTo(ARENA_WIDTH, cs);
+  ctx.moveTo(0, ARENA_HEIGHT - cs); ctx.lineTo(0, ARENA_HEIGHT); ctx.lineTo(cs, ARENA_HEIGHT);
+  ctx.moveTo(ARENA_WIDTH - cs, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT - cs);
   ctx.stroke();
 
   ctx.shadowBlur = 0;
 }
 
-function drawFood(ctx, food) {
-  // No shadow on food — drawing 200 blurred circles kills FPS
+function drawFood(ctx, food, vl, vt, vr, vb) {
   ctx.shadowBlur = 0;
-  const time = performance.now() * 0.003;
+
+  // Batch food draws by color — one beginPath+fill per color
+  const byColor = {};
   for (const f of food) {
-    // Subtle size pulse based on position (cheap hash for variety)
-    const pulse = 1 + Math.sin(time + f.x * 0.1 + f.y * 0.1) * 0.15;
-    ctx.fillStyle = f.color;
+    if (f.x < vl || f.x > vr || f.y < vt || f.y > vb) continue;
+    if (!byColor[f.color]) byColor[f.color] = [];
+    byColor[f.color].push(f);
+  }
+
+  const time = frameTime * 0.003;
+  for (const color in byColor) {
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(f.x, f.y, f.radius * pulse, 0, Math.PI * 2);
+    for (const f of byColor[color]) {
+      const pulse = 1 + Math.sin(time + f.x * 0.1 + f.y * 0.1) * 0.15;
+      ctx.moveTo(f.x + f.radius * pulse, f.y);
+      ctx.arc(f.x, f.y, f.radius * pulse, 0, Math.PI * 2);
+    }
     ctx.fill();
   }
 }
 
-function drawPlayer(ctx, player, isLocal) {
-  const { x, y, radius, color, name, invuln, score } = player;
+function drawPowerups(ctx, powerups, vl, vt, vr, vb) {
+  for (const pu of powerups) {
+    if (pu.x < vl || pu.x > vr || pu.y < vt || pu.y > vb) continue;
+
+    const pulse = 1 + Math.sin(frameTime * 0.005 + pu.id) * 0.2;
+    const r = 12 * pulse;
+
+    // Glow via radial gradient instead of shadowBlur
+    const grad = ctx.createRadialGradient(pu.x, pu.y, r * 0.3, pu.x, pu.y, r + 12);
+    grad.addColorStop(0, pu.color);
+    grad.addColorStop(0.6, pu.color + '44');
+    grad.addColorStop(1, pu.color + '00');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(pu.x, pu.y, r + 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pulsing orb
+    ctx.fillStyle = pu.color;
+    ctx.beginPath();
+    ctx.arc(pu.x, pu.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner bright core
+    ctx.fillStyle = '#ffffff88';
+    ctx.beginPath();
+    ctx.arc(pu.x, pu.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Orbiting ring
+    ctx.strokeStyle = pu.color + '66';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(pu.x, pu.y, r + 6 + Math.sin(frameTime * 0.004) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Label
+    ctx.font = 'bold 9px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = pu.color;
+    ctx.fillText(pu.label, pu.x, pu.y + r + 14);
+  }
+}
+
+function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
+  const { x, y, radius } = cell;
+  const { color, name, invuln, displayMass } = player;
 
   let alpha = 1;
   if (invuln) {
-    alpha = 0.4 + Math.sin(performance.now() * 0.01) * 0.3;
+    alpha = 0.4 + Math.sin(frameTime * 0.01) * 0.3;
   }
 
   ctx.globalAlpha = alpha;
 
-  // Outer glow — bigger glow for bigger players, pulse when moving fast
-  const pvx = player.vx || 0;
-  const pvy = player.vy || 0;
+  // Cell glow via radial gradient
+  const pvx = cell.vx || 0;
+  const pvy = cell.vy || 0;
   const speed = Math.sqrt(pvx * pvx + pvy * pvy);
-  const speedGlow = Math.min(15, speed * 0.02);
-  ctx.shadowColor = color;
-  ctx.shadowBlur = (isLocal ? 25 : Math.min(30, 12 + radius * 0.1)) + speedGlow;
+  const glowSize = radius + (isLocal ? 15 : 8) + Math.min(10, speed * 0.015);
 
-  // Player circle — slight stretch in movement direction for speed feel
+  const grad = ctx.createRadialGradient(x, y, radius * 0.8, x, y, glowSize);
+  grad.addColorStop(0, color + '00');
+  grad.addColorStop(0.5, color + '22');
+  grad.addColorStop(1, color + '00');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cell circle — slight stretch in movement direction
   ctx.fillStyle = color;
   ctx.beginPath();
   if (speed > 100) {
@@ -218,7 +418,6 @@ function drawPlayer(ctx, player, isLocal) {
   }
 
   // Inner bright core
-  ctx.shadowBlur = 0;
   ctx.fillStyle = '#ffffff44';
   ctx.beginPath();
   ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
@@ -233,43 +432,248 @@ function drawPlayer(ctx, player, isLocal) {
     ctx.stroke();
   }
 
+  // Active effect indicators (on all cells)
+  const effects = player.effects || {};
+  if (effects.shield) {
+    ctx.strokeStyle = '#ffffff55';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (effects.speed) {
+    const rot = frameTime * 0.006;
+    ctx.strokeStyle = '#00ffff55';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 6, rot, rot + Math.PI * 1.3);
+    ctx.stroke();
+  }
+  if (effects.magnet) {
+    const rot = -frameTime * 0.004;
+    ctx.strokeStyle = '#cc33ff55';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 10, rot, rot + Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 10, rot + Math.PI, rot + Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Kill streak aura rings (only on largest cell)
+  if (isLargest) {
+    const streak = player.killStreak || 0;
+    if (streak >= 2) {
+      const t = frameTime * 0.003;
+      const rings = Math.min(4, Math.floor(streak / 2));
+      const streakColors = ['#ffff0066', '#ff660066', '#ff000066', '#ff00ff66'];
+      for (let i = 0; i < rings; i++) {
+        const pulse = 1 + Math.sin(t + i * 1.5) * 0.15;
+        ctx.strokeStyle = streakColors[i];
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, (radius + 10 + i * 8) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+
   ctx.globalAlpha = 1;
 
-  // Name label — always white with dark outline for readability
-  ctx.shadowBlur = 0;
-  const textCol = getTextColor(color);
-  const isLightBg = textCol[1] === '0'; // starts with #0 = black text
-  const fontSize = Math.max(11, Math.min(16, radius * 0.5));
-  ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.strokeStyle = '#00000088';
-  ctx.lineWidth = 3;
-  ctx.strokeText(name, x, y - radius - 8);
-  ctx.fillStyle = '#ffffffcc';
-  ctx.fillText(name, x, y - radius - 8);
+  // Crown for #1 player (only on largest cell)
+  if (isLeader) {
+    drawCrown(ctx, x, y, radius);
+  }
 
-  // Mass display inside circle (for bigger players)
+  // Name label — only on largest cell
+  if (isLargest) {
+    const textCol = getTextColor(color);
+    const isLightBg = textCol[1] === '0';
+    const fontSize = Math.max(11, Math.min(16, radius * 0.5));
+    ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#00000088';
+    ctx.lineWidth = 3;
+    ctx.strokeText(name, x, y - radius - 8);
+    ctx.fillStyle = '#ffffffcc';
+    ctx.fillText(name, x, y - radius - 8);
+  }
+
+  // Mass display inside cell
+  const cellMass = Math.floor((cell.mass || player.mass) * 10);
   if (radius > 25) {
+    const textCol = getTextColor(color);
+    const isLightBg = textCol[1] === '0';
     ctx.font = `bold ${Math.max(10, radius * 0.4)}px "Segoe UI", Arial, sans-serif`;
+    ctx.textAlign = 'center';
     ctx.fillStyle = isLightBg ? '#00000066' : '#ffffff88';
     if (!isLightBg) {
       ctx.strokeStyle = '#00000066';
       ctx.lineWidth = 2;
-      ctx.strokeText(String(score), x, y + radius * 0.15);
+      ctx.strokeText(String(cellMass), x, y + radius * 0.15);
     }
-    ctx.fillText(String(score), x, y + radius * 0.15);
+    ctx.fillText(String(cellMass), x, y + radius * 0.15);
   }
 }
 
-function drawObstacles(ctx) {
+function drawCrown(ctx, x, y, radius) {
+  const crownW = radius * 0.9;
+  const crownH = radius * 0.5;
+  const crownY = y - radius - crownH - 6;
+
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  const left = x - crownW / 2;
+  const right = x + crownW / 2;
+  const top = crownY - crownH;
+  const bot = crownY;
+  ctx.moveTo(left, bot);
+  ctx.lineTo(left, top + crownH * 0.4);
+  ctx.lineTo(left + crownW * 0.25, top + crownH * 0.65);
+  ctx.lineTo(x, top);
+  ctx.lineTo(right - crownW * 0.25, top + crownH * 0.65);
+  ctx.lineTo(right, top + crownH * 0.4);
+  ctx.lineTo(right, bot);
+  ctx.closePath();
+  ctx.fill();
+
+  // Jewels
+  ctx.fillStyle = '#ff3333';
+  ctx.beginPath();
+  ctx.arc(x, top + crownH * 0.55, crownW * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#3399ff';
+  ctx.beginPath();
+  ctx.arc(left + crownW * 0.25, top + crownH * 0.7, crownW * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(right - crownW * 0.25, top + crownH * 0.7, crownW * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawMinimap(ctx, canvas, state, myId) {
+  const size = 160;
+  const padding = 12;
+  const mx = canvas.width - size - padding;
+  const my = canvas.height - size - padding;
+  const scaleX = size / ARENA_WIDTH;
+  const scaleY = size / ARENA_HEIGHT;
+
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.75)';
+  ctx.fillRect(mx, my, size, size);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx, my, size, size);
+
+  const obstacles = getObstacles();
+  if (obstacles) {
+    for (const obs of obstacles) {
+      ctx.fillStyle = obs.spike ? '#ff440066' : '#ff006644';
+      if (obs.type === 'pillar') {
+        ctx.beginPath();
+        ctx.arc(mx + obs.x * scaleX, my + obs.y * scaleY, Math.max(2, obs.radius * scaleX), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(mx + obs.x * scaleX, my + obs.y * scaleY, Math.max(1, obs.w * scaleX), Math.max(1, obs.h * scaleY));
+      }
+    }
+  }
+
+  for (const p of state.players) {
+    if (!p.alive) continue;
+    const isMe = p.id === myId;
+    const dotSize = isMe ? 4 : 2.5;
+    ctx.fillStyle = isMe ? '#ffffff' : p.color;
+    // Draw only largest cell position on minimap
+    ctx.beginPath();
+    ctx.arc(mx + p.x * scaleX, my + p.y * scaleY, dotSize, 0, Math.PI * 2);
+    ctx.fill();
+    if (isMe) {
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(mx + p.x * scaleX, my + p.y * scaleY, 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawControlsLegend(ctx, canvas) {
+  const padding = 12;
+  const minimapSize = 160;
+  const legendW = 160;
+  const lineH = 18;
+  const controls = [
+    ['WASD', 'Move'],
+    ['Click', 'Fire hook'],
+    ['Release', 'Detach hook'],
+    ['Space', 'Split'],
+  ];
+  const legendH = controls.length * lineH + 12;
+  const lx = canvas.width - legendW - padding;
+  const ly = canvas.height - minimapSize - padding - legendH - 8;
+
+  // Background
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
+  const r = 6;
+  ctx.beginPath();
+  ctx.moveTo(lx + r, ly);
+  ctx.lineTo(lx + legendW - r, ly);
+  ctx.quadraticCurveTo(lx + legendW, ly, lx + legendW, ly + r);
+  ctx.lineTo(lx + legendW, ly + legendH - r);
+  ctx.quadraticCurveTo(lx + legendW, ly + legendH, lx + legendW - r, ly + legendH);
+  ctx.lineTo(lx + r, ly + legendH);
+  ctx.quadraticCurveTo(lx, ly + legendH, lx, ly + legendH - r);
+  ctx.lineTo(lx, ly + r);
+  ctx.quadraticCurveTo(lx, ly, lx + r, ly);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.font = '11px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'left';
+
+  for (let i = 0; i < controls.length; i++) {
+    const [key, action] = controls[i];
+    const rowY = ly + 14 + i * lineH;
+
+    // Key badge
+    ctx.fillStyle = '#ffffff22';
+    const keyW = ctx.measureText(key).width + 10;
+    const badgeX = lx + 8;
+    ctx.fillRect(badgeX, rowY - 10, keyW, 14);
+    ctx.strokeStyle = '#ffffff33';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(badgeX, rowY - 10, keyW, 14);
+
+    ctx.fillStyle = '#ffffffbb';
+    ctx.fillText(key, badgeX + 5, rowY);
+
+    // Action label
+    ctx.fillStyle = '#ffffff66';
+    ctx.fillText(action, badgeX + keyW + 6, rowY);
+  }
+}
+
+function drawObstacles(ctx, vl, vt, vr, vb) {
   const obstacles = getObstacles();
   if (!obstacles || obstacles.length === 0) return;
 
-  const time = performance.now();
-
   for (const obs of obstacles) {
+    // Viewport culling for obstacles
+    if (obs.type === 'pillar') {
+      if (obs.x + obs.radius < vl || obs.x - obs.radius > vr ||
+          obs.y + obs.radius < vt || obs.y - obs.radius > vb) continue;
+    } else {
+      if (obs.x + obs.w < vl || obs.x > vr ||
+          obs.y + obs.h < vt || obs.y > vb) continue;
+    }
+
     const isSpike = obs.spike;
-    const glowColor = isSpike ? '#ff4400' : '#ff0066';
     const borderColor = isSpike ? '#ff440088' : '#ff006666';
     const coreColor = isSpike ? '#2a0a0a' : '#1a1a2e';
 
@@ -280,38 +684,40 @@ function drawObstacles(ctx) {
       ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Spike triangles around the pillar
+      // Spike triangles
       if (isSpike) {
         const spikeCount = Math.max(6, Math.floor(obs.radius * 0.4));
         const spikeLen = 8 + obs.radius * 0.2;
-        const pulse = 1 + Math.sin(time * 0.005) * 0.15;
+        const pulse = 1 + Math.sin(frameTime * 0.005) * 0.15;
         ctx.fillStyle = '#ff440099';
+        ctx.beginPath();
         for (let i = 0; i < spikeCount; i++) {
           const a = (Math.PI * 2 * i) / spikeCount;
           const aLeft = a - Math.PI / spikeCount * 0.5;
           const aRight = a + Math.PI / spikeCount * 0.5;
           const baseR = obs.radius;
           const tipR = baseR + spikeLen * pulse;
-          ctx.beginPath();
           ctx.moveTo(obs.x + Math.cos(aLeft) * baseR, obs.y + Math.sin(aLeft) * baseR);
           ctx.lineTo(obs.x + Math.cos(a) * tipR, obs.y + Math.sin(a) * tipR);
           ctx.lineTo(obs.x + Math.cos(aRight) * baseR, obs.y + Math.sin(aRight) * baseR);
-          ctx.fill();
         }
+        ctx.fill();
       }
 
-      // Neon border
-      const spikePulse = isSpike ? 10 + Math.sin(time * 0.004) * 8 : 0;
-      ctx.shadowColor = glowColor + '88';
-      ctx.shadowBlur = 15 + spikePulse;
+      // Neon border — reduced shadowBlur, only on spiked obstacles
+      if (isSpike) {
+        const spikePulse = 10 + Math.sin(frameTime * 0.004) * 8;
+        ctx.shadowColor = '#ff440088';
+        ctx.shadowBlur = 8 + spikePulse * 0.5;
+      }
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = isSpike ? 2 : 3;
       ctx.beginPath();
       ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
       // Inner ring
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = (isSpike ? '#ff4400' : '#ff0066') + '33';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -322,41 +728,32 @@ function drawObstacles(ctx) {
       ctx.fillStyle = coreColor;
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
 
-      // Spike ticks along wall edges
+      // Spike ticks along wall edges — batched into one path
       if (isSpike) {
-        const pulse = 1 + Math.sin(time * 0.005) * 0.15;
+        const pulse = 1 + Math.sin(frameTime * 0.005) * 0.15;
         const spikeLen = 6 * pulse;
         const spacing = 12;
         ctx.fillStyle = '#ff440099';
+        ctx.beginPath();
         if (obs.h > obs.w) {
-          // Vertical wall — spikes left and right
           for (let sy = obs.y; sy < obs.y + obs.h; sy += spacing) {
-            // Left spike
-            ctx.beginPath();
             ctx.moveTo(obs.x, sy); ctx.lineTo(obs.x - spikeLen, sy + spacing / 2); ctx.lineTo(obs.x, sy + spacing);
-            ctx.fill();
-            // Right spike
-            ctx.beginPath();
             ctx.moveTo(obs.x + obs.w, sy); ctx.lineTo(obs.x + obs.w + spikeLen, sy + spacing / 2); ctx.lineTo(obs.x + obs.w, sy + spacing);
-            ctx.fill();
           }
         } else {
-          // Horizontal wall — spikes top and bottom
           for (let sx = obs.x; sx < obs.x + obs.w; sx += spacing) {
-            ctx.beginPath();
             ctx.moveTo(sx, obs.y); ctx.lineTo(sx + spacing / 2, obs.y - spikeLen); ctx.lineTo(sx + spacing, obs.y);
-            ctx.fill();
-            ctx.beginPath();
             ctx.moveTo(sx, obs.y + obs.h); ctx.lineTo(sx + spacing / 2, obs.y + obs.h + spikeLen); ctx.lineTo(sx + spacing, obs.y + obs.h);
-            ctx.fill();
           }
         }
+        ctx.fill();
       }
 
-      // Neon border
-      const spikePulse = isSpike ? 10 + Math.sin(time * 0.004) * 8 : 0;
-      ctx.shadowColor = glowColor + '88';
-      ctx.shadowBlur = 15 + spikePulse;
+      // Neon border — reduced shadowBlur
+      if (isSpike) {
+        ctx.shadowColor = '#ff440088';
+        ctx.shadowBlur = 8;
+      }
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = isSpike ? 2 : 3;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
@@ -366,64 +763,62 @@ function drawObstacles(ctx) {
 }
 
 function drawHook(ctx, player, isLocal) {
-  const { hookState, hookX, hookY, x, y, color } = player;
+  const { hookState, hookX, hookY, color } = player;
+  // Draw hook from largest cell position
+  const x = player.x;
+  const y = player.y;
   const isAnchored = hookState === 'ANCHORED';
-
-  // Hook line — thicker and brighter when anchored
-  ctx.shadowColor = isAnchored ? '#ffffff' : color;
-  ctx.shadowBlur = isAnchored ? 12 : 8;
-  ctx.strokeStyle = isAnchored ? color : color + '88';
-  ctx.lineWidth = isAnchored ? 3 : 2;
-
   const isReelingPlayer = hookState === 'REELING_PLAYER';
 
-  if (isAnchored) {
-    // Draw taut line with slight curve
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(hookX, hookY);
-    ctx.stroke();
+  // No shadowBlur on hooks — use line opacity instead
+  ctx.shadowBlur = 0;
 
-    // Pulsing anchor point
-    const pulse = 1 + Math.sin(performance.now() * 0.008) * 0.3;
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 15 * pulse;
-    ctx.beginPath();
-    ctx.arc(hookX, hookY, 6 * pulse, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (isReelingPlayer) {
-    // Electric line to hooked player — pulsing red/white
-    const pulse = Math.sin(performance.now() * 0.015) * 0.5 + 0.5;
-    ctx.shadowColor = '#ff3333';
-    ctx.shadowBlur = 10 + pulse * 8;
-    ctx.strokeStyle = `rgba(255, ${100 + pulse * 155}, ${100 + pulse * 155}, 0.9)`;
+  if (isAnchored) {
+    ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(hookX, hookY);
     ctx.stroke();
 
-    // Hook grip indicator on victim
-    ctx.fillStyle = '#ff3333';
+    // Pulsing anchor point
+    const pulse = 1 + Math.sin(frameTime * 0.008) * 0.3;
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(hookX, hookY, 6, 0, Math.PI * 2);
+    ctx.arc(hookX, hookY, 6 * pulse, 0, Math.PI * 2);
     ctx.fill();
-  } else {
+    // Glow ring instead of shadowBlur
+    ctx.strokeStyle = color + '44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hookX, hookY, 10 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (isReelingPlayer) {
+    const pulse = Math.sin(frameTime * 0.015) * 0.5 + 0.5;
+    ctx.strokeStyle = `rgba(255, ${100 + pulse * 155 | 0}, ${100 + pulse * 155 | 0}, 0.9)`;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(hookX, hookY);
     ctx.stroke();
 
-    // Hook tip
+    ctx.fillStyle = '#ff3333';
+    ctx.beginPath();
+    ctx.arc(hookX, hookY, 6, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = color + '88';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(hookX, hookY);
+    ctx.stroke();
+
     ctx.fillStyle = '#ffffff';
-    ctx.shadowBlur = 10;
     ctx.beginPath();
     ctx.arc(hookX, hookY, 4, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  ctx.shadowBlur = 0;
 }
 
 // Update HUD elements — cached to avoid DOM thrashing every frame
@@ -435,17 +830,16 @@ let _lastAlive = null;
 export function updateHUD(state) {
   if (!state) return;
 
-  // Leaderboard — only update DOM if content changed
   const lbHtml = state.leaderboard
-    .map(e => `<div class="lb-entry"><span class="lb-name" style="color:${escapeHtml(e.color)}">${escapeHtml(e.name)}</span><span class="lb-kills">${e.score}</span></div>`)
+    .map((e, i) => `<div class="lb-entry"><span class="lb-rank">${i + 1}.</span><span class="lb-name" style="color:${escapeHtml(e.color)}">${escapeHtml(e.name)}</span><span class="lb-kills">${e.score}</span></div>`)
     .join('');
   if (lbHtml !== _lastLbHtml) {
     _lastLbHtml = lbHtml;
     document.getElementById('leaderboard-list').innerHTML = lbHtml;
   }
 
-  // Player count
-  const count = state.players.filter(p => p.alive).length;
+  let count = 0;
+  for (const p of state.players) if (p.alive) count++;
   if (count !== _lastCount) {
     _lastCount = count;
     const timer = document.getElementById('round-timer');
@@ -453,7 +847,6 @@ export function updateHUD(state) {
     timer.style.color = '#666';
   }
 
-  // Kill feed
   const kfHtml = state.round.killfeed
     .slice(-4)
     .reverse()
@@ -464,18 +857,21 @@ export function updateHUD(state) {
     document.getElementById('killfeed').innerHTML = kfHtml;
   }
 
-  // Respawn message
   const myId = getMyId();
   const me = state.players.find(p => p.id === myId);
   const alive = me ? me.alive : true;
   if (alive !== _lastAlive) {
     _lastAlive = alive;
-    const respawnMsg = document.getElementById('respawn-msg');
-    if (!alive) {
-      respawnMsg.textContent = 'YOU WERE EATEN!';
-      respawnMsg.classList.remove('hidden');
-    } else {
-      respawnMsg.classList.add('hidden');
+    const deathScreen = document.getElementById('death-screen');
+    if (!alive && deathScreen) {
+      // Show death screen with stats
+      const stats = document.getElementById('death-stats');
+      if (me && stats) {
+        stats.innerHTML = `Score: <strong>${me.score}</strong> &middot; Kills: <strong>${me.kills}</strong> &middot; Deaths: <strong>${me.deaths}</strong>`;
+      }
+      deathScreen.classList.remove('hidden');
+    } else if (deathScreen) {
+      deathScreen.classList.add('hidden');
     }
   }
 }

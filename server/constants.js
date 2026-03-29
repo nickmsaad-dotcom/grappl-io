@@ -43,19 +43,46 @@ export const SWING_MAX_SPEED = 900;     // Max tangential speed while swinging
 export const SWING_ROPE_LENGTH_MAX = 350; // Max rope length when anchored
 
 // Spike obstacles
-export const SPIKE_DAMAGE_RATE = 2.0;   // Mass lost per second while touching spikes
-export const SPIKE_KNOCKBACK = 400;     // Velocity push when touching spikes
+export const SPIKE_DAMAGE_RATE = 1.2;   // Fraction of mass lost per second while touching spikes (percentage-based)
+export const SPIKE_KNOCKBACK = 500;     // Velocity push when touching spikes
 
 // Grapple combat
 export const HOOK_PLAYER_PULL = 600;    // Speed to reel in a hooked smaller player
-export const HOOK_MASS_STEAL = 0.15;    // Steal 15% of bigger player's mass
+export const HOOK_MASS_STEAL = 0.07;    // Steal 7% of bigger player's mass
 export const HOOK_STEAL_BOOST = 700;    // Velocity boost when stealing from bigger player
 export const HOOK_PLAYER_RADIUS = 15;   // Hook must be within this distance of player center to hit
+
+// Split & Merge
+export const SPLIT_MIN_MASS = 2.0;        // Cell must have this to split
+export const SPLIT_MAX_CELLS = 8;         // Max pieces per player
+export const SPLIT_LAUNCH_SPEED = 700;    // Velocity burst for ejected cell
+export const SPLIT_COOLDOWN = 0.3;        // Seconds between splits
+export const MERGE_COOLDOWN = 15.0;       // Seconds before cells can re-merge
+export const MERGE_DRIFT_SPEED = 80;      // px/s merge-ready cells drift together
+export const SELF_PUSH_STRENGTH = 50;     // Keep non-merge-ready cells apart
+export const CELL_MIN_MASS = 0.5;         // Cell removed if below this
+
+// Power-ups
+export const POWERUP_SPAWN_INTERVAL = 15;   // Seconds between spawns
+export const POWERUP_MAX_ON_MAP = 3;
+export const POWERUP_DESPAWN_TIME = 20;     // Seconds until despawn
+export const POWERUP_RADIUS = 12;
+export const POWERUP_TYPES = [
+  { type: 'speed',   color: '#00ffff', duration: 5, label: 'SPEED' },
+  { type: 'shield',  color: '#ffffff', duration: 4, label: 'SHIELD' },
+  { type: 'magnet',  color: '#cc33ff', duration: 6, label: 'MAGNET' },
+  { type: 'bomb',    color: '#ff6600', duration: 0, label: 'MASS BOMB' },
+];
+export const POWERUP_SPEED_MULT = 1.8;
+export const POWERUP_MAGNET_RANGE = 200;
+export const POWERUP_MAGNET_PULL = 300;     // Food pull speed
+export const POWERUP_BOMB_RANGE = 250;
+export const POWERUP_BOMB_STEAL = 0.3;      // Steal 30% of nearby players' mass
 
 // Physics
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const SEND_RATE = 30;
+export const SEND_RATE = 60;
 
 // Visuals
 export const NEON_COLORS = [
@@ -69,7 +96,7 @@ export const NEON_COLORS = [
 // Walls:   { type: 'wall', x, y, w, h }
 export const OBSTACLES = [
   // Central cluster — creates a hub area (center pillar is spiked — dangerous!)
-  { type: 'pillar', x: 2000, y: 2000, radius: 50, spike: true },
+  { type: 'pillar', x: 2000, y: 2000, radius: 65, spike: true },
   { type: 'pillar', x: 1830, y: 1800, radius: 35 },
   { type: 'pillar', x: 2170, y: 2200, radius: 35 },
 
@@ -80,10 +107,10 @@ export const OBSTACLES = [
   { type: 'pillar', x: 3000, y: 3000, radius: 40 },
 
   // Mid-lane pillars (spiked — lane hazards)
-  { type: 'pillar', x: 2000, y: 830, radius: 30, spike: true },
-  { type: 'pillar', x: 2000, y: 3170, radius: 30, spike: true },
-  { type: 'pillar', x: 830, y: 2000, radius: 30, spike: true },
-  { type: 'pillar', x: 3170, y: 2000, radius: 30, spike: true },
+  { type: 'pillar', x: 2000, y: 830, radius: 42, spike: true },
+  { type: 'pillar', x: 2000, y: 3170, radius: 42, spike: true },
+  { type: 'pillar', x: 830, y: 2000, radius: 42, spike: true },
+  { type: 'pillar', x: 3170, y: 2000, radius: 42, spike: true },
 
   // Walls — create narrow passages (spiked walls — risky shortcuts)
   { type: 'wall', x: 1330, y: 1300, w: 20, h: 250, spike: true },
@@ -99,13 +126,13 @@ export const OBSTACLES = [
 
   // Scatter pillars — variety across larger map (some spiked)
   { type: 'pillar', x: 1500, y: 670, radius: 25 },
-  { type: 'pillar', x: 2500, y: 670, radius: 25, spike: true },
-  { type: 'pillar', x: 1500, y: 3330, radius: 25, spike: true },
+  { type: 'pillar', x: 2500, y: 670, radius: 38, spike: true },
+  { type: 'pillar', x: 1500, y: 3330, radius: 38, spike: true },
   { type: 'pillar', x: 2500, y: 3330, radius: 25 },
-  { type: 'pillar', x: 670, y: 1500, radius: 25, spike: true },
+  { type: 'pillar', x: 670, y: 1500, radius: 38, spike: true },
   { type: 'pillar', x: 670, y: 2500, radius: 25 },
   { type: 'pillar', x: 3330, y: 1500, radius: 25 },
-  { type: 'pillar', x: 3330, y: 2500, radius: 25, spike: true },
+  { type: 'pillar', x: 3330, y: 2500, radius: 38, spike: true },
 
   // Extra pillars for the bigger map (safe anchors)
   { type: 'pillar', x: 600, y: 600, radius: 28 },
