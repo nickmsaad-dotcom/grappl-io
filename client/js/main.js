@@ -333,14 +333,16 @@ let pendingFoodScore = 0;
 let pendingFoodTimer = 0;
 const FOOD_BATCH_INTERVAL = 0.4; // seconds
 
+const _prevMap = new Map();
 function detectEvents(prev, curr, dt) {
   const myId = getMyId();
-  const prevMap = new Map(prev.players.map(p => [p.id, p]));
+  _prevMap.clear();
+  for (const p of prev.players) _prevMap.set(p.id, p);
   const me = curr.players.find(p => p.id === myId);
-  const prevMe = prevMap.get(myId);
+  const prevMe = _prevMap.get(myId);
 
   for (const player of curr.players) {
-    const prevPlayer = prevMap.get(player.id);
+    const prevPlayer = _prevMap.get(player.id);
     if (!prevPlayer) continue;
 
     // Player respawned: was dead, now alive — clear streak display

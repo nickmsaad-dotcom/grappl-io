@@ -35,11 +35,15 @@ export function spawnFloatingText(x, y, text, color) {
 }
 
 function updateFloatingTexts(dt) {
-  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+  let i = floatingTexts.length;
+  while (i-- > 0) {
     const ft = floatingTexts[i];
     ft.y += ft.vy * dt;
     ft.life -= dt;
-    if (ft.life <= 0) floatingTexts.splice(i, 1);
+    if (ft.life <= 0) {
+      floatingTexts[i] = floatingTexts[floatingTexts.length - 1];
+      floatingTexts.pop();
+    }
   }
 }
 
@@ -365,14 +369,14 @@ function drawFood(ctx, food, vl, vt, vr, vb) {
     byColor[f.color].push(f);
   }
 
-  const time = frameTime * 0.003;
+  const pulse = 1 + Math.sin(frameTime * 0.003) * 0.12;
   for (const color in byColor) {
     ctx.fillStyle = color;
     ctx.beginPath();
     for (const f of byColor[color]) {
-      const pulse = 1 + Math.sin(time + f.x * 0.1 + f.y * 0.1) * 0.15;
-      ctx.moveTo(f.x + f.radius * pulse, f.y);
-      ctx.arc(f.x, f.y, f.radius * pulse, 0, Math.PI * 2);
+      const r = f.radius * pulse;
+      ctx.moveTo(f.x + r, f.y);
+      ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
     }
     ctx.fill();
   }
@@ -385,14 +389,10 @@ function drawPowerups(ctx, powerups, vl, vt, vr, vb) {
     const pulse = 1 + Math.sin(frameTime * 0.005 + pu.id) * 0.2;
     const r = 12 * pulse;
 
-    // Glow via radial gradient instead of shadowBlur
-    const grad = ctx.createRadialGradient(pu.x, pu.y, r * 0.3, pu.x, pu.y, r + 12);
-    grad.addColorStop(0, pu.color);
-    grad.addColorStop(0.6, pu.color + '44');
-    grad.addColorStop(1, pu.color + '00');
-    ctx.fillStyle = grad;
+    // Outer glow ring (no gradient for perf)
+    ctx.fillStyle = pu.color + '22';
     ctx.beginPath();
-    ctx.arc(pu.x, pu.y, r + 12, 0, Math.PI * 2);
+    ctx.arc(pu.x, pu.y, r + 10, 0, Math.PI * 2);
     ctx.fill();
 
     // Pulsing orb
@@ -433,17 +433,13 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
 
   ctx.globalAlpha = alpha;
 
-  // Cell glow via radial gradient
+  // Cell glow — simple opacity ring (no gradient for mobile perf)
   const pvx = cell.vx || 0;
   const pvy = cell.vy || 0;
   const speed = Math.sqrt(pvx * pvx + pvy * pvy);
-  const glowSize = radius + (isLocal ? 15 : 8) + Math.min(10, speed * 0.015);
+  const glowSize = radius + (isLocal ? 12 : 6) + Math.min(8, speed * 0.01);
 
-  const grad = ctx.createRadialGradient(x, y, radius * 0.8, x, y, glowSize);
-  grad.addColorStop(0, color + '00');
-  grad.addColorStop(0.5, color + '22');
-  grad.addColorStop(1, color + '00');
-  ctx.fillStyle = grad;
+  ctx.fillStyle = color + '15';
   ctx.beginPath();
   ctx.arc(x, y, glowSize, 0, Math.PI * 2);
   ctx.fill();
@@ -599,12 +595,9 @@ function drawLeaderStar(ctx, x, y, radius) {
   ctx.globalAlpha = 1;
 
   // Soft glow behind star
-  const glow = ctx.createRadialGradient(starX, starY, 0, starX, starY, starSize * 2);
-  glow.addColorStop(0, '#ffd70044');
-  glow.addColorStop(1, '#ffd70000');
-  ctx.fillStyle = glow;
+  ctx.fillStyle = '#ffd70022';
   ctx.beginPath();
-  ctx.arc(starX, starY, starSize * 2, 0, Math.PI * 2);
+  ctx.arc(starX, starY, starSize * 1.8, 0, Math.PI * 2);
   ctx.fill();
 
   // Draw star shape
@@ -868,18 +861,20 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
         ctx.fill();
       }
 
-      // Neon border — reduced shadowBlur, only on spiked obstacles
+      // Neon border — no shadowBlur for mobile perf
       if (isSpike) {
-        const spikePulse = 10 + Math.sin(frameTime * 0.004) * 8;
-        ctx.shadowColor = '#ff440088';
-        ctx.shadowBlur = 8 + spikePulse * 0.5;
+        // Outer glow ring instead of shadowBlur
+        ctx.strokeStyle = '#ff440033';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.radius + 3, 0, Math.PI * 2);
+        ctx.stroke();
       }
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = isSpike ? 2 : 3;
       ctx.beginPath();
       ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
       // Inner ring
       ctx.strokeStyle = (isSpike ? '#ff4400' : '#ff0066') + '33';
@@ -913,15 +908,15 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
         ctx.fill();
       }
 
-      // Neon border — reduced shadowBlur
+      // Neon border — no shadowBlur for mobile perf
       if (isSpike) {
-        ctx.shadowColor = '#ff440088';
-        ctx.shadowBlur = 8;
+        ctx.strokeStyle = '#ff440033';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(obs.x - 2, obs.y - 2, obs.w + 4, obs.h + 4);
       }
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = isSpike ? 2 : 3;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
-      ctx.shadowBlur = 0;
     }
   }
 }
@@ -1013,7 +1008,7 @@ export function updateHUD(state) {
   }
 
   const kfHtml = state.round.killfeed
-    .slice(isMobile ? -3 : -6)
+    .slice(isMobile ? -1 : -6)
     .reverse()
     .map(k => `<div class="kill-entry"><span class="killer">${escapeHtml(k.killer)}</span> ate <span class="victim">${escapeHtml(k.victim)}</span></div>`)
     .join('');

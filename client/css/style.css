@@ -335,8 +335,8 @@ body {
   .lb-entry { font-size: 12px; }
   .lb-name { max-width: 70px; }
 
-  #round-timer { font-size: 11px; top: 6px; }
-  #killfeed { top: 22px; font-size: 9px; }
+  #round-timer { font-size: 9px; top: 4px; color: #444; }
+  #killfeed { top: 16px; font-size: 9px; }
   .kill-entry { margin: 0; }
 
   #alltime-boards { gap: 12px; margin-top: 20px; }

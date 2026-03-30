@@ -54,9 +54,9 @@ export function initTouch(canvas) {
   canvasRef = canvas;
 
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-  canvas.addEventListener('touchend', onTouchEnd, { passive: false });
-  canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+  canvas.addEventListener('touchend', onTouchEnd, { passive: true });
+  canvas.addEventListener('touchcancel', onTouchEnd, { passive: true });
 }
 
 function getJoyCenter() {
@@ -135,7 +135,6 @@ function onTouchStart(e) {
 }
 
 function onTouchMove(e) {
-  e.preventDefault();
   for (const touch of e.changedTouches) {
     if (joystickTouch && touch.identifier === joystickTouch.id) {
       joystickTouch.curX = touch.clientX;
@@ -149,7 +148,6 @@ function onTouchMove(e) {
 }
 
 function onTouchEnd(e) {
-  e.preventDefault();
   for (const touch of e.changedTouches) {
     if (joystickTouch && touch.identifier === joystickTouch.id) {
       joystickTouch = null;
