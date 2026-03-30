@@ -263,7 +263,6 @@ export function render(ctx, canvas, state, dt) {
   // Minimap + controls legend (screen space, after ctx.restore)
   drawMinimap(ctx, canvas, state, myId);
   if (isMobile) {
-    drawMobileRoomKey(ctx, canvas);
     drawTouchControls(ctx, canvas);
   } else {
     drawControlsLegend(ctx, canvas);
@@ -637,7 +636,7 @@ function getSafeRight() {
 }
 
 function drawMinimap(ctx, canvas, state, myId) {
-  const size = isMobile ? 100 : 160;
+  const size = isMobile ? 80 : 160;
   const padding = isMobile ? 8 : 12;
   const safeR = isMobile ? getSafeRight() : 0;
   const safeB = isMobile ? getSafeBottom() : 0;
@@ -995,7 +994,8 @@ let _lastAlive = null;
 export function updateHUD(state) {
   if (!state) return;
 
-  const lbHtml = state.leaderboard
+  const lbEntries = isMobile ? state.leaderboard.slice(0, 3) : state.leaderboard;
+  const lbHtml = lbEntries
     .map((e, i) => `<div class="lb-entry"><span class="lb-rank">${i + 1}.</span><span class="lb-name" style="color:${escapeHtml(e.color)}">${escapeHtml(e.name)}</span><span class="lb-kills">${e.score}</span></div>`)
     .join('');
   if (lbHtml !== _lastLbHtml) {
@@ -1013,7 +1013,7 @@ export function updateHUD(state) {
   }
 
   const kfHtml = state.round.killfeed
-    .slice(-6)
+    .slice(isMobile ? -3 : -6)
     .reverse()
     .map(k => `<div class="kill-entry"><span class="killer">${escapeHtml(k.killer)}</span> ate <span class="victim">${escapeHtml(k.victim)}</span></div>`)
     .join('');

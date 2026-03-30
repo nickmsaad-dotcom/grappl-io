@@ -24,7 +24,7 @@ const JOY_BOTTOM_OFFSET = 100;
 // Split button config
 const SPLIT_BTN_RADIUS = 30;
 const SPLIT_BTN_RIGHT_OFFSET = 80;
-const SPLIT_BTN_BOTTOM_OFFSET = 90;
+const SPLIT_BTN_BOTTOM_OFFSET = 110;
 
 // Pause button config
 const PAUSE_BTN_SIZE = 40;

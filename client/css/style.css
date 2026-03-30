@@ -269,30 +269,61 @@ body {
   .logo { font-size: 36px; letter-spacing: 2px; }
   .tagline { font-size: 14px; margin-bottom: 24px; }
 
-  #name-input, #room-input, #join-buttons,
-  #rename-input, #death-room-input, #retry-btn,
-  #pause-room-input, #pause-switch-btn, #pause-quit-btn {
+  #name-input, #room-input, #join-buttons {
     width: 240px;
   }
 
+  .input-hint { width: 240px; font-size: 10px; }
+
   #death-box, #pause-box {
     min-width: auto;
-    max-width: 90vw;
-    padding: 28px 20px;
+    width: 85vw;
+    max-width: 320px;
+    padding: 24px 16px;
+    border-radius: 12px;
   }
 
-  #death-title { font-size: 24px; letter-spacing: 2px; }
-  #death-stats { font-size: 13px; margin-bottom: 20px; }
+  #death-title { font-size: 20px; letter-spacing: 1px; margin-bottom: 4px; }
+  #pause-title { font-size: 22px; }
+  #death-stats { font-size: 12px; margin-bottom: 16px; }
 
-  #death-buttons, #join-buttons {
+  #rename-input, #death-room-input {
+    width: 100%;
+    font-size: 16px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .death-hint { width: auto; font-size: 10px; margin-bottom: 10px; }
+
+  #death-buttons {
+    width: 100%;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  #retry-btn {
+    font-size: 15px;
+    padding: 11px;
+    letter-spacing: 1px;
+  }
+
+  #death-quit-btn {
+    font-size: 14px;
+    padding: 11px 14px;
+  }
+
+  #join-buttons {
     flex-direction: column;
     gap: 8px;
   }
 
-  #retry-btn, #death-quit-btn {
-    font-size: 16px;
-    padding: 12px;
+  #pause-room-input, #pause-switch-btn, #pause-quit-btn {
+    width: 100%;
+    font-size: 15px;
   }
+
+  #pause-close-btn { top: 6px; right: 10px; font-size: 24px; }
 
   #leaderboard {
     top: 8px;
@@ -304,9 +335,9 @@ body {
   .lb-entry { font-size: 12px; }
   .lb-name { max-width: 70px; }
 
-  #round-timer { font-size: 16px; top: 8px; }
-  #killfeed { top: 32px; font-size: 11px; }
-  .kill-entry { margin: 1px 0; }
+  #round-timer { font-size: 11px; top: 6px; }
+  #killfeed { top: 22px; font-size: 9px; }
+  .kill-entry { margin: 0; }
 
   #alltime-boards { gap: 12px; margin-top: 20px; }
   .alltime-board { min-width: 130px; padding: 10px 14px; }
