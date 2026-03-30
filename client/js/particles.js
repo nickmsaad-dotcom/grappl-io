@@ -1,6 +1,7 @@
 // Lightweight particle system for visual effects
+import { isMobile } from './input.js';
 
-const MAX_PARTICLES = 300;
+const MAX_PARTICLES = isMobile ? 100 : 300;
 const particles = [];
 
 export function spawnDeathBurst(x, y, color) {

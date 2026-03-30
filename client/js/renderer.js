@@ -20,7 +20,7 @@ let frameTime = 0;
 
 // --- Floating score indicators ---
 const floatingTexts = [];
-const MAX_FLOATING_TEXTS = 30;
+const MAX_FLOATING_TEXTS = isMobile ? 10 : 30;
 
 export function spawnFloatingText(x, y, text, color) {
   if (floatingTexts.length >= MAX_FLOATING_TEXTS) floatingTexts.shift();
@@ -54,9 +54,11 @@ function drawFloatingTexts(ctx, vl, vt, vr, vb) {
     ctx.globalAlpha = alpha;
     ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.strokeStyle = '#000000aa';
-    ctx.lineWidth = 3;
-    ctx.strokeText(ft.text, ft.x, ft.y);
+    if (!isMobile) {
+      ctx.strokeStyle = '#000000aa';
+      ctx.lineWidth = 3;
+      ctx.strokeText(ft.text, ft.x, ft.y);
+    }
     ctx.fillStyle = ft.color;
     ctx.fillText(ft.text, ft.x, ft.y);
   }
@@ -308,7 +310,7 @@ function drawCrosshair(ctx) {
 }
 
 function drawGrid(ctx, cx, cy, viewW, viewH) {
-  const gridSize = 60;
+  const gridSize = isMobile ? 120 : 60;
   const startX = Math.floor((cx - viewW / 2) / gridSize) * gridSize;
   const endX = Math.ceil((cx + viewW / 2) / gridSize) * gridSize;
   const startY = Math.floor((cy - viewH / 2) / gridSize) * gridSize;
@@ -334,6 +336,14 @@ function drawGrid(ctx, cx, cy, viewW, viewH) {
 }
 
 function drawArenaBoundary(ctx) {
+  if (isMobile) {
+    // Simple boundary on mobile — no pulse, no glow, no corner accents
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+    return;
+  }
+
   const pulse = 0.3 + Math.sin(frameTime * 0.002) * 0.15;
 
   // Outer glow line (wider, translucent) instead of expensive shadowBlur
@@ -369,7 +379,7 @@ function drawFood(ctx, food, vl, vt, vr, vb) {
     byColor[f.color].push(f);
   }
 
-  const pulse = 1 + Math.sin(frameTime * 0.003) * 0.12;
+  const pulse = isMobile ? 1 : 1 + Math.sin(frameTime * 0.003) * 0.12;
   for (const color in byColor) {
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -386,14 +396,16 @@ function drawPowerups(ctx, powerups, vl, vt, vr, vb) {
   for (const pu of powerups) {
     if (pu.x < vl || pu.x > vr || pu.y < vt || pu.y > vb) continue;
 
-    const pulse = 1 + Math.sin(frameTime * 0.005 + pu.id) * 0.2;
+    const pulse = isMobile ? 1 : 1 + Math.sin(frameTime * 0.005 + pu.id) * 0.2;
     const r = 12 * pulse;
 
-    // Outer glow ring (no gradient for perf)
-    ctx.fillStyle = pu.color + '22';
-    ctx.beginPath();
-    ctx.arc(pu.x, pu.y, r + 10, 0, Math.PI * 2);
-    ctx.fill();
+    if (!isMobile) {
+      // Outer glow ring
+      ctx.fillStyle = pu.color + '22';
+      ctx.beginPath();
+      ctx.arc(pu.x, pu.y, r + 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Pulsing orb
     ctx.fillStyle = pu.color;
@@ -401,18 +413,20 @@ function drawPowerups(ctx, powerups, vl, vt, vr, vb) {
     ctx.arc(pu.x, pu.y, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // Inner bright core
-    ctx.fillStyle = '#ffffff88';
-    ctx.beginPath();
-    ctx.arc(pu.x, pu.y, r * 0.4, 0, Math.PI * 2);
-    ctx.fill();
+    if (!isMobile) {
+      // Inner bright core
+      ctx.fillStyle = '#ffffff88';
+      ctx.beginPath();
+      ctx.arc(pu.x, pu.y, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
 
-    // Orbiting ring
-    ctx.strokeStyle = pu.color + '66';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(pu.x, pu.y, r + 6 + Math.sin(frameTime * 0.004) * 3, 0, Math.PI * 2);
-    ctx.stroke();
+      // Orbiting ring
+      ctx.strokeStyle = pu.color + '66';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pu.x, pu.y, r + 6 + Math.sin(frameTime * 0.004) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // Label
     ctx.font = 'bold 9px "Segoe UI", Arial, sans-serif';
@@ -433,21 +447,23 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
 
   ctx.globalAlpha = alpha;
 
-  // Cell glow — simple opacity ring (no gradient for mobile perf)
   const pvx = cell.vx || 0;
   const pvy = cell.vy || 0;
   const speed = Math.sqrt(pvx * pvx + pvy * pvy);
-  const glowSize = radius + (isLocal ? 12 : 6) + Math.min(8, speed * 0.01);
 
-  ctx.fillStyle = color + '15';
-  ctx.beginPath();
-  ctx.arc(x, y, glowSize, 0, Math.PI * 2);
-  ctx.fill();
+  // Cell glow ring — skip on mobile for perf
+  if (!isMobile) {
+    const glowSize = radius + (isLocal ? 12 : 6) + Math.min(8, speed * 0.01);
+    ctx.fillStyle = color + '15';
+    ctx.beginPath();
+    ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Cell circle — slight stretch in movement direction
+  // Cell circle — skip stretch on mobile for perf
   ctx.fillStyle = color;
   ctx.beginPath();
-  if (speed > 100) {
+  if (!isMobile && speed > 100) {
     const stretch = Math.min(1.15, 1 + speed * 0.0003);
     const angle = Math.atan2(pvy, pvx);
     ctx.save();
@@ -462,14 +478,16 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     ctx.fill();
   }
 
-  // Inner bright core
-  ctx.fillStyle = '#ffffff44';
-  ctx.beginPath();
-  ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
-  ctx.fill();
+  // Inner bright core — skip on mobile for perf
+  if (!isMobile) {
+    ctx.fillStyle = '#ffffff44';
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Local player ring
-  if (isLocal) {
+  // Local player ring — skip on mobile
+  if (isLocal && !isMobile) {
     ctx.strokeStyle = '#ffffff33';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -506,8 +524,8 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     ctx.stroke();
   }
 
-  // Kill streak aura rings (only on largest cell)
-  if (isLargest) {
+  // Kill streak aura rings (only on largest cell, skip on mobile)
+  if (isLargest && !isMobile) {
     const streak = player.killStreak || 0;
     if (streak >= 2) {
       const t = frameTime * 0.003;
@@ -845,7 +863,7 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
       if (isSpike) {
         const spikeCount = Math.max(6, Math.floor(obs.radius * 0.4));
         const spikeLen = 8 + obs.radius * 0.2;
-        const pulse = 1 + Math.sin(frameTime * 0.005) * 0.15;
+        const pulse = isMobile ? 1 : 1 + Math.sin(frameTime * 0.005) * 0.15;
         ctx.fillStyle = '#ff440099';
         ctx.beginPath();
         for (let i = 0; i < spikeCount; i++) {
@@ -861,9 +879,8 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
         ctx.fill();
       }
 
-      // Neon border — no shadowBlur for mobile perf
-      if (isSpike) {
-        // Outer glow ring instead of shadowBlur
+      // Neon border — skip glow ring on mobile
+      if (isSpike && !isMobile) {
         ctx.strokeStyle = '#ff440033';
         ctx.lineWidth = 6;
         ctx.beginPath();
@@ -876,12 +893,14 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
       ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Inner ring
-      ctx.strokeStyle = (isSpike ? '#ff4400' : '#ff0066') + '33';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(obs.x, obs.y, obs.radius * 0.6, 0, Math.PI * 2);
-      ctx.stroke();
+      // Inner ring — skip on mobile
+      if (!isMobile) {
+        ctx.strokeStyle = (isSpike ? '#ff4400' : '#ff0066') + '33';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(obs.x, obs.y, obs.radius * 0.6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     } else if (obs.type === 'wall') {
       // Dark core
       ctx.fillStyle = coreColor;
@@ -889,7 +908,7 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
 
       // Spike ticks along wall edges — batched into one path
       if (isSpike) {
-        const pulse = 1 + Math.sin(frameTime * 0.005) * 0.15;
+        const pulse = isMobile ? 1 : 1 + Math.sin(frameTime * 0.005) * 0.15;
         const spikeLen = 6 * pulse;
         const spacing = 12;
         ctx.fillStyle = '#ff440099';
@@ -908,8 +927,8 @@ function drawObstacles(ctx, vl, vt, vr, vb) {
         ctx.fill();
       }
 
-      // Neon border — no shadowBlur for mobile perf
-      if (isSpike) {
+      // Neon border — skip glow on mobile
+      if (isSpike && !isMobile) {
         ctx.strokeStyle = '#ff440033';
         ctx.lineWidth = 6;
         ctx.strokeRect(obs.x - 2, obs.y - 2, obs.w + 4, obs.h + 4);
@@ -1004,7 +1023,6 @@ export function updateHUD(state) {
     _lastCount = count;
     const timer = document.getElementById('round-timer');
     timer.textContent = `${count} player${count !== 1 ? 's' : ''} online`;
-    timer.style.color = '#666';
   }
 
   const kfHtml = state.round.killfeed

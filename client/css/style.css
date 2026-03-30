@@ -335,14 +335,20 @@ body {
   .lb-entry { font-size: 12px; }
   .lb-name { max-width: 70px; }
 
-  #round-timer { font-size: 9px; top: 4px; color: #444; }
-  #killfeed { top: 16px; font-size: 9px; }
+  #round-timer { font-size: 9px !important; top: 4px !important; color: #555 !important; font-weight: 400 !important; }
+  #killfeed { top: 16px !important; font-size: 9px !important; }
   .kill-entry { margin: 0; }
 
   #alltime-boards { gap: 12px; margin-top: 20px; }
   .alltime-board { min-width: 130px; padding: 10px 14px; }
   .alltime-entry { font-size: 12px; }
   .alltime-name { max-width: 70px; }
+}
+
+/* Hide players online + killfeed in portrait on mobile */
+@media (pointer: coarse) and (orientation: portrait) {
+  #round-timer { display: none !important; }
+  #killfeed { display: none !important; }
 }
 
 /* All-Time Leaderboards (homepage) */
@@ -488,7 +494,7 @@ body {
   transform: translateX(-50%);
   font-size: 24px;
   font-weight: 700;
-  color: #fff;
+  color: #666;
   text-shadow: 0 0 10px #00ffff88;
 }
 
