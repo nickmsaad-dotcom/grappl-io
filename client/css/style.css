@@ -416,6 +416,14 @@ body {
   padding: 8px 0;
 }
 
+.credit {
+  margin-top: 32px;
+  font-size: 11px;
+  color: #333;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
 /* HUD */
 #hud {
   position: fixed;

@@ -145,18 +145,26 @@ export const OBSTACLES = [
   { type: 'pillar', x: 2500, y: 2000, radius: 22 },
 ];
 
-// Spawn points (spread around larger arena)
+// Spawn points (16 spread around larger arena)
 export const SPAWN_POINTS = [
+  // 4 corners
   { x: 670, y: 670 },
   { x: 3330, y: 670 },
   { x: 670, y: 3330 },
   { x: 3330, y: 3330 },
+  // 4 edge midpoints
   { x: 2000, y: 670 },
   { x: 2000, y: 3330 },
   { x: 670, y: 2000 },
   { x: 3330, y: 2000 },
+  // 4 inner ring
   { x: 1300, y: 1300 },
   { x: 2700, y: 1300 },
   { x: 1300, y: 2700 },
   { x: 2700, y: 2700 },
+  // 4 mid-lane (between center and edges)
+  { x: 2000, y: 1300 },
+  { x: 2000, y: 2700 },
+  { x: 1300, y: 2000 },
+  { x: 2700, y: 2000 },
 ];

@@ -59,6 +59,20 @@ io.on('connection', (socket) => {
     socket.emit('room_created', { key, obstacles: entry.game.obstacles });
   });
 
+  socket.on('find_public', () => {
+    // Leave previous room if any
+    if (socket.data.roomKey) {
+      const prevGame = getGameForSocket(socket);
+      if (prevGame) prevGame.removePlayer(socket.id);
+      socket.leave(socket.data.roomKey);
+    }
+    const key = rooms.findPublicRoom();
+    const entry = rooms.getRoom(key);
+    socket.data.roomKey = key;
+    socket.join(key);
+    socket.emit('room_joined', { key, obstacles: entry.game.obstacles });
+  });
+
   socket.on('join_room', (key) => {
     if (!key || typeof key !== 'string') {
       socket.emit('room_error', 'Invalid room code');

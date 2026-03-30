@@ -2,7 +2,7 @@
 
 import { initInput, getInput, setCameraTransform, isMobile } from './input.js';
 import { getPauseQueued } from './touch.js';
-import { connect, disconnect, join, sendInput, sendRespawn, getMyId, createRoom, joinRoom, getRoomKey } from './net.js';
+import { connect, disconnect, join, sendInput, sendRespawn, getMyId, createRoom, joinRoom, findPublicRoom, getRoomKey } from './net.js';
 import { getInterpolatedState } from './interpolation.js';
 import { render, updateHUD, triggerScreenShake, spawnFloatingText, startDeathAnim, triggerHitStop } from './renderer.js';
 import { updateParticles, spawnDeathBurst, spawnTrail, spawnStealSparks } from './particles.js';
@@ -71,15 +71,15 @@ function doJoin() {
   const code = roomInput.value.trim().toUpperCase();
 
   if (code) {
-    // Join existing room
+    // Join existing room by code
     joinRoom(code, (err) => {
       if (err) { showJoinError(err); return; }
       enterGame();
     });
   } else {
-    // Create new room then enter
-    createRoom((err, key) => {
-      if (err) { showJoinError('Failed to create room'); return; }
+    // Find a public room with other players (or create one)
+    findPublicRoom((err, key) => {
+      if (err) { showJoinError('Failed to find a game'); return; }
       roomInput.value = key;
       roomDisplay.classList.remove('hidden');
       roomCodeValue.textContent = key;

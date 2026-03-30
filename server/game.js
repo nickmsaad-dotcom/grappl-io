@@ -280,9 +280,14 @@ export class Game {
     const player = new Player(id, cleanName(name));
     this.players.set(id, player);
     this._forceFoodBroadcast = true; // Send full food to new player
+    // Replace a bot when a human joins (keep total at MIN_PLAYERS)
     if (this.botIds.size > 0 && this.players.size > MIN_PLAYERS) {
       this.removeBots(1);
     }
+  }
+
+  get maxHumansReached() {
+    return this.humanCount >= 6;
   }
 
   removePlayer(id) {

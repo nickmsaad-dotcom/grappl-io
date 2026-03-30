@@ -4,6 +4,7 @@ const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // No I or O (avoid confusion with 1
 const KEY_LENGTH = 6;
 const CLEANUP_INTERVAL = 60000; // 60s
 const EMPTY_ROOM_TTL = 120000; // 2 minutes
+const MAX_HUMANS_PER_ROOM = 6;
 
 export class RoomManager {
   constructor(io) {
@@ -50,6 +51,17 @@ export class RoomManager {
       this.createRoom(key);
     }
     return this.rooms.get(key);
+  }
+
+  // Find a public room with space for another human, or create one
+  findPublicRoom() {
+    for (const [key, entry] of this.rooms) {
+      if (entry.game.humanCount > 0 && entry.game.humanCount < MAX_HUMANS_PER_ROOM) {
+        return key;
+      }
+    }
+    // No room with space — create a new one
+    return this.createRoom();
   }
 
   removeRoom(key) {

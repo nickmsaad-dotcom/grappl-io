@@ -45,6 +45,27 @@ export function createRoom(cb) {
   socket.emit('create_room');
 }
 
+export function findPublicRoom(cb) {
+  if (!socket) return;
+  let handled = false;
+  const timeout = setTimeout(() => {
+    if (handled) return;
+    handled = true;
+    socket.off('room_joined', handler);
+    cb('Server timeout — try again');
+  }, 5000);
+  const handler = (data) => {
+    if (handled) return;
+    handled = true;
+    clearTimeout(timeout);
+    currentRoomKey = data.key;
+    if (data.obstacles) obstacles = data.obstacles;
+    cb(null, data.key);
+  };
+  socket.once('room_joined', handler);
+  socket.emit('find_public');
+}
+
 export function joinRoom(key, cb) {
   if (!socket) return;
   // Clean up previous listeners
