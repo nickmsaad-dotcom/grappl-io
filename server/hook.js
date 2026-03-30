@@ -51,6 +51,10 @@ export function updateFlyingHook(player, food, players) {
   player.hookX += player.hookVx * DT;
   player.hookY += player.hookVy * DT;
 
+  // Update origin to track player movement (for range check)
+  player.hookOriginX = player.x;
+  player.hookOriginY = player.y;
+
   // Check obstacle collision first — anchor to terrain
   const obsHit = checkPointObstacleCollision(player.hookX, player.hookY);
   if (obsHit) {
@@ -342,6 +346,7 @@ export function reelHookedFood(player, foodById) {
 export function checkFoodPickup(player, food) {
   if (!player.alive) return;
 
+  let ate = false;
   for (const f of food) {
     if (f.dead) continue;
     for (const cell of player.cells) {
@@ -354,8 +359,10 @@ export function checkFoodPickup(player, food) {
         cell.mass += f.mass;
         cell.radius = Player.radiusFromMass(cell.mass);
         player.score += f.mass;
+        ate = true;
         break;
       }
     }
   }
+  if (ate) player.updateFromCells();
 }

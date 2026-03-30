@@ -1,6 +1,7 @@
 import {
   ARENA_WIDTH, ARENA_HEIGHT,
-  SPIKE_DAMAGE_RATE, SPIKE_KNOCKBACK, DT, CELL_MIN_MASS
+  SPIKE_DAMAGE_RATE, SPIKE_KNOCKBACK, DT, CELL_MIN_MASS,
+  SIZE_EAT_RATIO
 } from './constants.js';
 import { checkCircleObstacleCollision } from './obstacles.js';
 import { Player } from './player.js';
@@ -40,19 +41,20 @@ export function resolvePlayerCollisions(players, onEatCell) {
       // Skip if either player already dead this tick
       if (!a.player.alive || !b.player.alive) continue;
 
-      // Check if one cell can eat the other (just needs more mass)
+      // Check if one cell can eat the other (must be significantly bigger)
+      // Require overlap > 50% of smaller cell's radius (center inside bigger cell)
       // Tiebreaker for equal mass: player with lower id wins (prevents permanent stalemate)
       let aEatsB = false;
       let bEatsA = false;
 
-      if (a.cell.mass > b.cell.mass) {
+      const overlap = touchDist - dist;
+      const aCanEat = a.cell.radius > b.cell.radius * SIZE_EAT_RATIO;
+      const bCanEat = b.cell.radius > a.cell.radius * SIZE_EAT_RATIO;
+
+      if (aCanEat && overlap > b.cell.radius * 0.5) {
         aEatsB = true;
-      } else if (b.cell.mass > a.cell.mass) {
+      } else if (bCanEat && overlap > a.cell.radius * 0.5) {
         bEatsA = true;
-      } else if (a.cell.mass === b.cell.mass) {
-        // Equal mass tiebreaker
-        if (a.player.id < b.player.id) aEatsB = true;
-        else bEatsA = true;
       }
 
       if (aEatsB &&

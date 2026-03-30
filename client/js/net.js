@@ -13,6 +13,7 @@ export function connect() {
 
 export function disconnect() {
   if (socket) {
+    socket.removeAllListeners();
     socket._snapshotBound = false;
     socket.disconnect();
     socket = null;

@@ -29,6 +29,9 @@ function lerpPlayer(a, b, t) {
     return lerpCell(ac, bc, t);
   }) : [];
 
+  // Only lerp hook position if hook state is the same in both frames
+  const sameHook = a.hookState === b.hookState;
+
   return {
     ...b,
     x: lerp(a.x, b.x, t),
@@ -36,8 +39,8 @@ function lerpPlayer(a, b, t) {
     vx: lerp(a.vx, b.vx, t),
     vy: lerp(a.vy, b.vy, t),
     radius: lerp(a.radius, b.radius, t),
-    hookX: lerp(a.hookX, b.hookX, t),
-    hookY: lerp(a.hookY, b.hookY, t),
+    hookX: sameHook ? lerp(a.hookX, b.hookX, t) : b.hookX,
+    hookY: sameHook ? lerp(a.hookY, b.hookY, t) : b.hookY,
     anchorX: b.anchorX,
     anchorY: b.anchorY,
     cells,

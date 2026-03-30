@@ -26,7 +26,13 @@ export function initInput(canvas) {
   }
 
   // Desktop: keyboard + mouse
+  const isTyping = () => {
+    const el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  };
+
   window.addEventListener('keydown', (e) => {
+    if (isTyping()) return;
     keys[e.key] = true;
     if (GAME_KEYS.has(e.key)) {
       e.preventDefault();
@@ -38,6 +44,7 @@ export function initInput(canvas) {
   }, { capture: true });
 
   window.addEventListener('keypress', (e) => {
+    if (isTyping()) return;
     if (GAME_KEYS.has(e.key)) {
       e.preventDefault();
       e.stopPropagation();

@@ -6,6 +6,10 @@ import { getMyId, getObstacles, getRoomKey } from './net.js';
 import { getMouseScreenPos, isMobile } from './input.js';
 import { drawTouchControls } from './touch.js';
 
+// Logical canvas size (CSS pixels, not physical)
+function logicalW(canvas) { return canvas.width / (window.devicePixelRatio || 1); }
+function logicalH(canvas) { return canvas.height / (window.devicePixelRatio || 1); }
+
 let screenShake = { x: 0, y: 0, intensity: 0 };
 
 // Persistent smooth camera state
@@ -170,31 +174,33 @@ export function render(ctx, canvas, state, dt) {
   camSmooth.x += (targetX - camSmooth.x) * lerpFactor;
   camSmooth.y += (targetY - camSmooth.y) * lerpFactor;
 
-  const baseScale = Math.min(canvas.width, canvas.height) / 800;
+  // Mobile gets a closer zoom so the game doesn't look tiny
+  const zoomDivisor = isMobile ? 500 : 800;
+  const baseScale = Math.min(logicalW(canvas), logicalH(canvas)) / zoomDivisor;
   const targetScale = baseScale * targetZoom;
   camSmooth.scale += (targetScale - camSmooth.scale) * (1 - Math.exp(-5 * safeDt));
 
   const scale = camSmooth.scale;
-  const offsetX = canvas.width / 2 - camSmooth.x * scale + screenShake.x;
-  const offsetY = canvas.height / 2 - camSmooth.y * scale + screenShake.y;
+  const offsetX = logicalW(canvas) / 2 - camSmooth.x * scale + screenShake.x;
+  const offsetY = logicalH(canvas) / 2 - camSmooth.y * scale + screenShake.y;
 
   // Compute viewport bounds in world space (with margin)
   const margin = 100;
-  const viewLeft = camSmooth.x - canvas.width / scale / 2 - margin;
-  const viewRight = camSmooth.x + canvas.width / scale / 2 + margin;
-  const viewTop = camSmooth.y - canvas.height / scale / 2 - margin;
-  const viewBottom = camSmooth.y + canvas.height / scale / 2 + margin;
+  const viewLeft = camSmooth.x - logicalW(canvas) / scale / 2 - margin;
+  const viewRight = camSmooth.x + logicalW(canvas) / scale / 2 + margin;
+  const viewTop = camSmooth.y - logicalH(canvas) / scale / 2 - margin;
+  const viewBottom = camSmooth.y + logicalH(canvas) / scale / 2 + margin;
 
   // Clear
   ctx.fillStyle = '#0a0a0a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logicalW(canvas), logicalH(canvas));
 
   ctx.save();
   ctx.translate(offsetX, offsetY);
   ctx.scale(scale, scale);
 
   // Draw grid (batched)
-  drawGrid(ctx, camSmooth.x, camSmooth.y, canvas.width / scale, canvas.height / scale);
+  drawGrid(ctx, camSmooth.x, camSmooth.y, logicalW(canvas) / scale, logicalH(canvas) / scale);
 
   // Draw arena boundary
   drawArenaBoundary(ctx);
@@ -255,6 +261,7 @@ export function render(ctx, canvas, state, dt) {
   // Minimap + controls legend (screen space, after ctx.restore)
   drawMinimap(ctx, canvas, state, myId);
   if (isMobile) {
+    drawMobileRoomKey(ctx, canvas);
     drawTouchControls(ctx, canvas);
   } else {
     drawControlsLegend(ctx, canvas);
@@ -323,8 +330,13 @@ function drawGrid(ctx, cx, cy, viewW, viewH) {
 
 function drawArenaBoundary(ctx) {
   const pulse = 0.3 + Math.sin(frameTime * 0.002) * 0.15;
-  ctx.shadowColor = '#00ffff';
-  ctx.shadowBlur = 15 + pulse * 15;
+
+  // Outer glow line (wider, translucent) instead of expensive shadowBlur
+  ctx.strokeStyle = `rgba(0, 255, 255, ${pulse * 0.3})`;
+  ctx.lineWidth = 8;
+  ctx.strokeRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+  // Main boundary line
   ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`;
   ctx.lineWidth = 3;
   ctx.strokeRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
@@ -339,8 +351,6 @@ function drawArenaBoundary(ctx) {
   ctx.moveTo(0, ARENA_HEIGHT - cs); ctx.lineTo(0, ARENA_HEIGHT); ctx.lineTo(cs, ARENA_HEIGHT);
   ctx.moveTo(ARENA_WIDTH - cs, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT); ctx.lineTo(ARENA_WIDTH, ARENA_HEIGHT - cs);
   ctx.stroke();
-
-  ctx.shadowBlur = 0;
 }
 
 function drawFood(ctx, food, vl, vt, vr, vb) {
@@ -526,7 +536,8 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
 
   // Name label — only on largest cell
   if (isLargest) {
-    const fontSize = Math.max(11, Math.min(16, radius * 0.5));
+    const mobileBoost = isMobile ? 1.4 : 1;
+    const fontSize = Math.max(11, Math.min(16 * mobileBoost, radius * 0.5 * mobileBoost));
     ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.strokeStyle = '#00000088';
@@ -544,7 +555,7 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     if (effects.bomb) activeLabels.push({ label: 'MASS BOMB', color: '#ff6600' });
 
     if (activeLabels.length > 0) {
-      const labelSize = Math.max(9, Math.min(12, radius * 0.35));
+      const labelSize = Math.max(9, Math.min(isMobile ? 15 : 12, radius * (isMobile ? 0.45 : 0.35)));
       ctx.font = `bold ${labelSize}px "Segoe UI", Arial, sans-serif`;
       let labelY = y + radius + labelSize + 6;
       for (const item of activeLabels) {
@@ -558,12 +569,13 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     }
   }
 
-  // Mass display inside cell
+  // Mass display inside cell — hide for small split cells
   const cellMass = Math.floor((cell.mass || player.mass) * 10);
-  if (radius > 25) {
+  if (radius > (isMobile ? 22 : 28)) {
     const textCol = getTextColor(color);
     const isLightBg = textCol[1] === '0';
-    ctx.font = `bold ${Math.max(10, radius * 0.4)}px "Segoe UI", Arial, sans-serif`;
+    const massScale = isMobile ? 0.5 : 0.4;
+    ctx.font = `bold ${Math.max(10, radius * massScale)}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillStyle = isLightBg ? '#00000066' : '#ffffff88';
     if (!isLightBg) {
@@ -615,11 +627,20 @@ function drawLeaderStar(ctx, x, y, radius) {
   ctx.restore();
 }
 
+function getSafeBottom() {
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0') || 0;
+}
+function getSafeRight() {
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sar') || '0') || 0;
+}
+
 function drawMinimap(ctx, canvas, state, myId) {
-  const size = 160;
-  const padding = 12;
-  const mx = canvas.width - size - padding;
-  const my = canvas.height - size - padding;
+  const size = isMobile ? 100 : 160;
+  const padding = isMobile ? 8 : 12;
+  const safeR = isMobile ? getSafeRight() : 0;
+  const safeB = isMobile ? getSafeBottom() : 0;
+  const mx = logicalW(canvas) - size - padding - safeR;
+  const my = logicalH(canvas) - size - padding - safeB;
   const scaleX = size / ARENA_WIDTH;
   const scaleY = size / ARENA_HEIGHT;
 
@@ -646,12 +667,17 @@ function drawMinimap(ctx, canvas, state, myId) {
   for (const p of state.players) {
     if (!p.alive) continue;
     const isMe = p.id === myId;
-    const dotSize = isMe ? 4 : 2.5;
     ctx.fillStyle = isMe ? '#ffffff' : p.color;
-    // Draw only largest cell position on minimap
-    ctx.beginPath();
-    ctx.arc(mx + p.x * scaleX, my + p.y * scaleY, dotSize, 0, Math.PI * 2);
-    ctx.fill();
+    // Draw all cells on minimap for multi-cell players
+    const cells = p.cells && p.cells.length > 0
+      ? p.cells
+      : [{ x: p.x, y: p.y }];
+    for (const cell of cells) {
+      const dotSize = isMe ? 3.5 : 2;
+      ctx.beginPath();
+      ctx.arc(mx + cell.x * scaleX, my + cell.y * scaleY, dotSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (isMe) {
       ctx.strokeStyle = '#ffffff88';
       ctx.lineWidth = 1;
@@ -662,9 +688,45 @@ function drawMinimap(ctx, canvas, state, myId) {
   }
 }
 
+function drawMobileRoomKey(ctx, canvas) {
+  const roomKey = getRoomKey();
+  if (!roomKey) return;
+  const minimapSize = 100;
+  const padding = 8;
+  const safeR = getSafeRight();
+  const safeB = getSafeBottom();
+  const rkW = 100;
+  const rkH = 18;
+  const rkX = logicalW(canvas) - minimapSize - padding - safeR;
+  const rkY = logicalH(canvas) - minimapSize - padding - safeB - rkH - 4;
+
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.55)';
+  ctx.beginPath();
+  const rr = 4;
+  ctx.moveTo(rkX + rr, rkY);
+  ctx.lineTo(rkX + rkW - rr, rkY);
+  ctx.quadraticCurveTo(rkX + rkW, rkY, rkX + rkW, rkY + rr);
+  ctx.lineTo(rkX + rkW, rkY + rkH - rr);
+  ctx.quadraticCurveTo(rkX + rkW, rkY + rkH, rkX + rkW - rr, rkY + rkH);
+  ctx.lineTo(rkX + rr, rkY + rkH);
+  ctx.quadraticCurveTo(rkX, rkY + rkH, rkX, rkY + rkH - rr);
+  ctx.lineTo(rkX, rkY + rr);
+  ctx.quadraticCurveTo(rkX, rkY, rkX + rr, rkY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.font = '10px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#666';
+  ctx.fillText('SERVER:', rkX + 6, rkY + 13);
+  ctx.fillStyle = '#00ffffcc';
+  ctx.font = 'bold 10px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(roomKey, rkX + 52, rkY + 13);
+}
+
 function drawControlsLegend(ctx, canvas) {
   const padding = 12;
-  const minimapSize = 160;
+  const minimapSize = isMobile ? 100 : 160;
   const legendW = 160;
   const lineH = 18;
   const controls = [
@@ -675,8 +737,8 @@ function drawControlsLegend(ctx, canvas) {
     ['Esc', 'Menu'],
   ];
   const legendH = controls.length * lineH + 12;
-  const lx = canvas.width - legendW - padding;
-  const ly = canvas.height - minimapSize - padding - legendH - 8;
+  const lx = logicalW(canvas) - legendW - padding;
+  const ly = logicalH(canvas) - minimapSize - padding - legendH - 8;
 
   // Room key label above legend
   const roomKey = getRoomKey();
@@ -949,7 +1011,7 @@ export function updateHUD(state) {
   }
 
   const kfHtml = state.round.killfeed
-    .slice(-4)
+    .slice(-6)
     .reverse()
     .map(k => `<div class="kill-entry"><span class="killer">${escapeHtml(k.killer)}</span> ate <span class="victim">${escapeHtml(k.victim)}</span></div>`)
     .join('');
@@ -968,9 +1030,12 @@ export function updateHUD(state) {
       // Show death screen with stats
       const stats = document.getElementById('death-stats');
       if (me && stats) {
-        stats.innerHTML = `Score: <strong>${me.score}</strong> &middot; Kills: <strong>${me.kills}</strong> &middot; Deaths: <strong>${me.deaths}</strong>`;
+        stats.innerHTML = `Mass: <strong>${me.displayMass}</strong> &middot; Kills: <strong>${me.kills}</strong> &middot; Deaths: <strong>${me.deaths}</strong>`;
       }
       deathScreen.classList.remove('hidden');
+      // Pre-fill rename input with current name
+      const renameInput = document.getElementById('rename-input');
+      if (renameInput && me) renameInput.value = me.name || '';
     } else if (deathScreen) {
       deathScreen.classList.add('hidden');
     }

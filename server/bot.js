@@ -306,7 +306,7 @@ export function updateBotInput(bot, players, food, powerups) {
       // Hook to nearby pillars for slingshot movement
       if (bot.hookState === 'IDLE' && Math.random() < SLING_CHANCE) {
         for (const obs of OBSTACLES) {
-          if (obs.type !== 'pillar' || obs.spike) continue; // aggressive bots avoid spiked pillars
+          if (obs.type !== 'pillar' || obs.spike) continue; // all bots avoid spiked pillars
           const odx = obs.x - bot.x;
           const ody = obs.y - bot.y;
           const oDist = Math.sqrt(odx * odx + ody * ody);

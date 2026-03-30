@@ -3,6 +3,17 @@
 export const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent)
   || (navigator.maxTouchPoints > 1 && window.innerWidth < 1200);
 
+// Safe area insets (for notch/home indicator)
+function getSafeInsets() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    top: parseInt(style.getPropertyValue('--sat') || '0') || 0,
+    right: parseInt(style.getPropertyValue('--sar') || '0') || 0,
+    bottom: parseInt(style.getPropertyValue('--sab') || '0') || 0,
+    left: parseInt(style.getPropertyValue('--sal') || '0') || 0,
+  };
+}
+
 // Joystick config
 const JOY_RADIUS = 60;
 const JOY_THUMB_RADIUS = 25;
@@ -35,6 +46,10 @@ let pauseQueued = false;
 let canvasRef = null;
 let touchCameraTransform = { offsetX: 0, offsetY: 0, scale: 1 };
 
+// Logical (CSS) pixel dimensions — touch events use CSS pixels
+function lw() { return canvasRef ? canvasRef.width / (window.devicePixelRatio || 1) : window.innerWidth; }
+function lh() { return canvasRef ? canvasRef.height / (window.devicePixelRatio || 1) : window.innerHeight; }
+
 export function initTouch(canvas) {
   canvasRef = canvas;
 
@@ -45,18 +60,18 @@ export function initTouch(canvas) {
 }
 
 function getJoyCenter() {
-  const h = canvasRef ? canvasRef.height : window.innerHeight;
-  return { x: JOY_X, y: h - JOY_BOTTOM_OFFSET };
+  const safe = getSafeInsets();
+  return { x: JOY_X + safe.left, y: lh() - JOY_BOTTOM_OFFSET - safe.bottom };
 }
 
 function getSplitBtnCenter() {
-  const w = canvasRef ? canvasRef.width : window.innerWidth;
-  const h = canvasRef ? canvasRef.height : window.innerHeight;
-  return { x: w - SPLIT_BTN_RIGHT_OFFSET, y: h - SPLIT_BTN_BOTTOM_OFFSET };
+  const safe = getSafeInsets();
+  return { x: lw() - SPLIT_BTN_RIGHT_OFFSET - safe.right, y: lh() - SPLIT_BTN_BOTTOM_OFFSET - safe.bottom };
 }
 
 function getPauseBtnRect() {
-  return { x: PAUSE_BTN_MARGIN, y: PAUSE_BTN_MARGIN, w: PAUSE_BTN_SIZE, h: PAUSE_BTN_SIZE };
+  const safe = getSafeInsets();
+  return { x: PAUSE_BTN_MARGIN + safe.left, y: PAUSE_BTN_MARGIN + safe.top, w: PAUSE_BTN_SIZE, h: PAUSE_BTN_SIZE };
 }
 
 function hitTest(tx, ty, cx, cy, r) {
@@ -67,7 +82,7 @@ function hitTest(tx, ty, cx, cy, r) {
 
 function onTouchStart(e) {
   e.preventDefault();
-  const cw = canvasRef ? canvasRef.width : window.innerWidth;
+  const cw = lw();
 
   for (const touch of e.changedTouches) {
     const tx = touch.clientX;

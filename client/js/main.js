@@ -11,10 +11,17 @@ const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 
 function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  const w = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 resize();
 
 initInput(canvas);
@@ -295,9 +302,11 @@ function loop() {
     ctx.textAlign = 'center';
     ctx.strokeStyle = '#000000cc';
     ctx.lineWidth = 4;
-    ctx.strokeText(sa.text, canvas.width / 2, canvas.height * 0.3);
+    const cw = canvas.width / (window.devicePixelRatio || 1);
+    const ch = canvas.height / (window.devicePixelRatio || 1);
+    ctx.strokeText(sa.text, cw / 2, ch * 0.3);
     ctx.fillStyle = sa.color;
-    ctx.fillText(sa.text, canvas.width / 2, canvas.height * 0.3);
+    ctx.fillText(sa.text, cw / 2, ch * 0.3);
     ctx.restore();
     if (sa.life <= 0) streakAnnouncement = null;
   }

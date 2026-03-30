@@ -145,6 +145,9 @@ export class Player {
     this.alive = true;
     this.respawnTimer = 0;
     this.killStreak = 0;
+    this.kills = 0;
+    this.score = 0;
+    this.peakMass = MIN_MASS;
     this.effects = { speed: 0, shield: 0, magnet: 0, bomb: 0 };
   }
 

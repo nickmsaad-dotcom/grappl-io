@@ -1,9 +1,11 @@
 // Lightweight particle system for visual effects
 
+const MAX_PARTICLES = 300;
 const particles = [];
 
 export function spawnDeathBurst(x, y, color) {
-  const count = 20;
+  const count = Math.min(20, MAX_PARTICLES - particles.length);
+  if (count <= 0) return;
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
     const speed = 150 + Math.random() * 300;
@@ -52,7 +54,6 @@ export function spawnFlingBurst(x, y, color) {
 }
 
 // Player movement trail — subtle afterimage
-const MAX_PARTICLES = 300;
 
 export function spawnTrail(x, y, radius, color, speed) {
   if (speed < 80 || particles.length > MAX_PARTICLES) return;
@@ -71,7 +72,8 @@ export function spawnTrail(x, y, radius, color, speed) {
 
 // Mass steal spark effect — electric sparks between two points
 export function spawnStealSparks(fromX, fromY, toX, toY, color) {
-  const count = 8;
+  if (particles.length >= MAX_PARTICLES) return;
+  const count = Math.min(8, MAX_PARTICLES - particles.length);
   for (let i = 0; i < count; i++) {
     const t = Math.random();
     const x = fromX + (toX - fromX) * t;

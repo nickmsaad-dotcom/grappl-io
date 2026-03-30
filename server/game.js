@@ -38,6 +38,7 @@ export class Game {
     this.powerupIdCounter = 0;
     this.powerupSpawnTimer = POWERUP_SPAWN_INTERVAL * 0.5; // First spawn sooner
     this.tick = 0;
+    this._forceFoodBroadcast = true; // Send full food on next broadcast
     this.botIds = new Set();
     let botCounter = 0;
     this._nextBotId = () => `bot_${botCounter++}`;
@@ -278,6 +279,7 @@ export class Game {
   addPlayer(id, name) {
     const player = new Player(id, cleanName(name));
     this.players.set(id, player);
+    this._forceFoodBroadcast = true; // Send full food to new player
     if (this.botIds.size > 0 && this.players.size > MIN_PLAYERS) {
       this.removeBots(1);
     }
@@ -296,6 +298,10 @@ export class Game {
   respawnPlayer(id, newName) {
     const player = this.players.get(id);
     if (!player || player.alive) return;
+    // Submit stats before reset (spawn resets kills/score/peakMass)
+    if (!player.isBot) {
+      submitPlayerStats(player.name, player.kills, player.peakMass);
+    }
     if (newName && typeof newName === 'string') {
       player.name = cleanName(newName.slice(0, 16)) || player.name;
     }
@@ -592,8 +598,9 @@ export class Game {
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
 
-    // Send full food list every 5th broadcast to save bandwidth
-    const sendFood = this.tick % (Math.round(TICK_RATE / SEND_RATE) * 5) === 0;
+    // Send full food list every 5th broadcast or when forced (new player joined)
+    const sendFood = this._forceFoodBroadcast || this.tick % (Math.round(TICK_RATE / SEND_RATE) * 5) === 0;
+    this._forceFoodBroadcast = false;
     const foodList = sendFood
       ? this.food.filter(f => !f.dead).map(f => ({ id: f.id, x: f.x, y: f.y, color: f.color, radius: f.radius }))
       : undefined;
