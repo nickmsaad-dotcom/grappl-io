@@ -178,7 +178,9 @@ export function render(ctx, canvas, state, dt) {
   const zoomDivisor = isMobile ? 500 : 800;
   const baseScale = Math.min(logicalW(canvas), logicalH(canvas)) / zoomDivisor;
   const targetScale = baseScale * targetZoom;
-  camSmooth.scale += (targetScale - camSmooth.scale) * (1 - Math.exp(-5 * safeDt));
+  // Smooth zoom — zoom out faster than zoom in for responsive feel
+  const zoomSpeed = targetScale < camSmooth.scale ? 4 : 3;
+  camSmooth.scale += (targetScale - camSmooth.scale) * (1 - Math.exp(-zoomSpeed * safeDt));
 
   const scale = camSmooth.scale;
   const offsetX = logicalW(canvas) / 2 - camSmooth.x * scale + screenShake.x;
