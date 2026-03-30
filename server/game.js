@@ -42,6 +42,7 @@ export class Game {
     this.botIds = new Set();
     let botCounter = 0;
     this._nextBotId = () => `bot_${botCounter++}`;
+    this._usedSpawns = new Set(); // Track used spawn indices for unique spawns
 
     // Spawn initial food
     this.fillFood();
@@ -253,10 +254,25 @@ export class Game {
   }
 
   // --- Bot system ---
+  getUniqueSpawn() {
+    // Reset if all spawn points used
+    if (this._usedSpawns.size >= SPAWN_POINTS.length) {
+      this._usedSpawns.clear();
+    }
+    // Find an unused spawn point
+    const available = [];
+    for (let i = 0; i < SPAWN_POINTS.length; i++) {
+      if (!this._usedSpawns.has(i)) available.push(i);
+    }
+    const idx = available[Math.floor(Math.random() * available.length)];
+    this._usedSpawns.add(idx);
+    return SPAWN_POINTS[idx];
+  }
+
   fillBots() {
     while (this.players.size < MIN_PLAYERS) {
       const id = this._nextBotId();
-      const bot = new Player(id, getBotName());
+      const bot = new Player(id, getBotName(), this.getUniqueSpawn());
       bot.isBot = true;
       bot._botSeed = Math.random() * 1000;
       bot._botWanderAngle = Math.random() * Math.PI * 2;
@@ -277,7 +293,7 @@ export class Game {
 
   // --- Player lifecycle ---
   addPlayer(id, name) {
-    const player = new Player(id, cleanName(name));
+    const player = new Player(id, cleanName(name), this.getUniqueSpawn());
     this.players.set(id, player);
     this._forceFoodBroadcast = true; // Send full food to new player
     // Replace a bot when a human joins (keep total at MIN_PLAYERS)
@@ -310,7 +326,7 @@ export class Game {
     if (newName && typeof newName === 'string') {
       player.name = cleanName(newName.slice(0, 16)) || player.name;
     }
-    player.spawn();
+    player.spawn(this.getUniqueSpawn());
   }
 
   handleInput(id, data) {

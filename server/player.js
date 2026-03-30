@@ -11,7 +11,7 @@ export function nextCellId() {
 }
 
 export class Player {
-  constructor(id, name) {
+  constructor(id, name, spawnPoint) {
     this.id = id;
     this.name = name;
     this.color = NEON_COLORS[colorIndex % NEON_COLORS.length];
@@ -70,7 +70,7 @@ export class Player {
     // Input
     this.input = { keys: {}, mouseAngle: 0, fire: false, release: false, split: false };
 
-    this.spawn();
+    this.spawn(spawnPoint);
   }
 
   static radiusFromMass(mass) {
@@ -119,8 +119,8 @@ export class Player {
     if (totalMass > this.peakMass) this.peakMass = totalMass;
   }
 
-  spawn() {
-    const sp = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+  spawn(spawnPoint) {
+    const sp = spawnPoint || SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
     const sx = sp.x + (Math.random() - 0.5) * 80;
     const sy = sp.y + (Math.random() - 0.5) * 80;
     this.x = sx;
