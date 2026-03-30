@@ -265,17 +265,19 @@ function loop() {
       detectEvents(prevState, state, dt);
     }
 
-    // Player movement trails (per cell)
-    for (const player of state.players) {
-      if (!player.alive) continue;
-      const cells = player.cells && player.cells.length > 0
-        ? player.cells
-        : [{ x: player.x, y: player.y, vx: player.vx, vy: player.vy, radius: player.radius }];
-      for (const cell of cells) {
-        const vx = cell.vx || 0, vy = cell.vy || 0;
-        const speed = Math.sqrt(vx * vx + vy * vy);
-        if (speed > 80 && Math.random() < 0.4) {
-          spawnTrail(cell.x, cell.y, cell.radius, player.color, speed);
+    // Player movement trails (per cell) — skip on mobile for perf
+    if (!isMobile) {
+      for (const player of state.players) {
+        if (!player.alive) continue;
+        const cells = player.cells && player.cells.length > 0
+          ? player.cells
+          : [{ x: player.x, y: player.y, vx: player.vx, vy: player.vy, radius: player.radius }];
+        for (const cell of cells) {
+          const vx = cell.vx || 0, vy = cell.vy || 0;
+          const speed = Math.sqrt(vx * vx + vy * vy);
+          if (speed > 80 && Math.random() < 0.4) {
+            spawnTrail(cell.x, cell.y, cell.radius, player.color, speed);
+          }
         }
       }
     }

@@ -555,9 +555,11 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     const fontSize = Math.max(11, Math.min(16 * mobileBoost, radius * 0.5 * mobileBoost));
     ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.strokeStyle = '#00000088';
-    ctx.lineWidth = 3;
-    ctx.strokeText(name, x, y - radius - 8);
+    if (!isMobile) {
+      ctx.strokeStyle = '#00000088';
+      ctx.lineWidth = 3;
+      ctx.strokeText(name, x, y - radius - 8);
+    }
     ctx.fillStyle = '#ffffffcc';
     ctx.fillText(name, x, y - radius - 8);
 
@@ -574,9 +576,11 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
       ctx.font = `bold ${labelSize}px "Segoe UI", Arial, sans-serif`;
       let labelY = y + radius + labelSize + 6;
       for (const item of activeLabels) {
-        ctx.strokeStyle = '#000000aa';
-        ctx.lineWidth = 2.5;
-        ctx.strokeText(item.label, x, labelY);
+        if (!isMobile) {
+          ctx.strokeStyle = '#000000aa';
+          ctx.lineWidth = 2.5;
+          ctx.strokeText(item.label, x, labelY);
+        }
         ctx.fillStyle = item.color;
         ctx.fillText(item.label, x, labelY);
         labelY += labelSize + 3;
@@ -593,7 +597,7 @@ function drawCell(ctx, cell, player, isLocal, isLeader, isLargest) {
     ctx.font = `bold ${Math.max(10, radius * massScale)}px "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillStyle = isLightBg ? '#00000066' : '#ffffff88';
-    if (!isLightBg) {
+    if (!isLightBg && !isMobile) {
       ctx.strokeStyle = '#00000066';
       ctx.lineWidth = 2;
       ctx.strokeText(String(cellMass), x, y + radius * 0.15);

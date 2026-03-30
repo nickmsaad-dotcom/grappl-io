@@ -3,15 +3,19 @@
 export const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent)
   || (navigator.maxTouchPoints > 1 && window.innerWidth < 1200);
 
-// Safe area insets (for notch/home indicator)
-function getSafeInsets() {
+// Safe area insets (for notch/home indicator) — cached to avoid DOM reads every frame
+let cachedInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+function updateCachedInsets() {
   const style = getComputedStyle(document.documentElement);
-  return {
+  cachedInsets = {
     top: parseInt(style.getPropertyValue('--sat') || '0') || 0,
     right: parseInt(style.getPropertyValue('--sar') || '0') || 0,
     bottom: parseInt(style.getPropertyValue('--sab') || '0') || 0,
     left: parseInt(style.getPropertyValue('--sal') || '0') || 0,
   };
+}
+function getSafeInsets() {
+  return cachedInsets;
 }
 
 // Joystick config
@@ -52,6 +56,10 @@ function lh() { return canvasRef ? canvasRef.height / (window.devicePixelRatio |
 
 export function initTouch(canvas) {
   canvasRef = canvas;
+
+  updateCachedInsets();
+  window.addEventListener('resize', updateCachedInsets);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', updateCachedInsets);
 
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
   canvas.addEventListener('touchmove', onTouchMove, { passive: true });

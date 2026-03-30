@@ -4,6 +4,10 @@ import { getSnapshots, getMyId } from './net.js';
 
 const INTERP_DELAY = 25; // ms behind latest snapshot (60Hz broadcast)
 
+// Reusable Maps to avoid per-frame allocation
+const _prevPlayerMap = new Map();
+const _prevCellMap = new Map();
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -22,14 +26,29 @@ function lerpCell(a, b, t) {
 }
 
 function lerpPlayer(a, b, t) {
-  // Match cells by ID for stable interpolation across splits/merges
-  const cells = b.cells ? b.cells.map((bc) => {
-    const ac = a.cells && a.cells.find(c => c.id === bc.id);
-    if (!ac) return bc; // New cell from split — no lerp
-    return lerpCell(ac, bc, t);
-  }) : [];
+  // Match cells by ID using Map for O(1) lookup instead of O(n) find
+  let cells;
+  if (b.cells) {
+    _prevCellMap.clear();
+    if (a.cells) {
+      for (let i = 0; i < a.cells.length; i++) {
+        _prevCellMap.set(a.cells[i].id, a.cells[i]);
+      }
+    }
+    cells = [];
+    for (let i = 0; i < b.cells.length; i++) {
+      const bc = b.cells[i];
+      const ac = _prevCellMap.get(bc.id);
+      if (!ac) {
+        cells.push(bc);
+      } else {
+        cells.push(lerpCell(ac, bc, t));
+      }
+    }
+  } else {
+    cells = [];
+  }
 
-  // Only lerp hook position if hook state is the same in both frames
   const sameHook = a.hookState === b.hookState;
 
   return {
@@ -79,17 +98,24 @@ export function getInterpolatedState() {
   const t = range > 0 ? Math.max(0, Math.min(1, (renderTime - prev.receivedAt) / range)) : 1;
 
   const myId = getMyId();
-  const interpolatedPlayers = next.players.map((nextPlayer) => {
-    const prevPlayer = prev.players.find(p => p.id === nextPlayer.id);
-    if (!prevPlayer) return nextPlayer;
 
-    // Local player uses latest server state (camera smoothing handles feel)
-    if (nextPlayer.id === myId) {
-      return nextPlayer;
+  // Build prev player Map for O(1) lookup instead of O(n) find
+  _prevPlayerMap.clear();
+  for (let i = 0; i < prev.players.length; i++) {
+    _prevPlayerMap.set(prev.players[i].id, prev.players[i]);
+  }
+
+  const interpolatedPlayers = [];
+  for (let i = 0; i < next.players.length; i++) {
+    const nextPlayer = next.players[i];
+    const prevPlayer = _prevPlayerMap.get(nextPlayer.id);
+
+    if (!prevPlayer || nextPlayer.id === myId) {
+      interpolatedPlayers.push(nextPlayer);
+    } else {
+      interpolatedPlayers.push(lerpPlayer(prevPlayer, nextPlayer, t));
     }
-
-    return lerpPlayer(prevPlayer, nextPlayer, t);
-  });
+  }
 
   return {
     ...next,

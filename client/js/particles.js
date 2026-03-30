@@ -139,12 +139,15 @@ export function drawParticles(ctx, viewLeft, viewTop, viewRight, viewBottom) {
     if (p.x < viewLeft - 20 || p.x > viewRight + 20 ||
         p.y < viewTop - 20 || p.y > viewBottom + 20) continue;
     const alpha = Math.max(0, p.life / p.maxLife);
-    ctx.globalAlpha = alpha * 0.5;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * alpha + 3, 0, Math.PI * 2);
-    ctx.fill();
+    if (!isMobile) {
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius * alpha + 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius * alpha, 0, Math.PI * 2);
     ctx.fill();

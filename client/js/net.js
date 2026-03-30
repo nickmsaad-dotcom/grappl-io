@@ -111,11 +111,9 @@ export function join(name) {
     let lastFood = [];
     socket.on('snapshot', (snapshot) => {
       if (snapshot.food) lastFood = snapshot.food;
-      snapshotBuffer.push({
-        ...snapshot,
-        food: snapshot.food || lastFood,
-        receivedAt: performance.now(),
-      });
+      else snapshot.food = lastFood;
+      snapshot.receivedAt = performance.now();
+      snapshotBuffer.push(snapshot);
       if (snapshotBuffer.length > 5) snapshotBuffer.shift();
     });
 

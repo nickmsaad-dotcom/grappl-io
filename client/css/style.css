@@ -346,7 +346,7 @@ body {
 }
 
 /* Hide players online + killfeed in portrait on mobile */
-@media (pointer: coarse) and (orientation: portrait) {
+@media (max-width: 900px) and (orientation: portrait) {
   #round-timer { display: none !important; }
   #killfeed { display: none !important; }
 }
