@@ -32,6 +32,7 @@ export function fireHook(player) {
   player.hookVy = Math.sin(player.input.mouseAngle) * HOOK_SPEED;
   player.hookedFood = [];
   player.hookedPlayerId = null;
+  player.hookedCellId = null;
   player.hookedOwnCells = [];
 }
 
@@ -40,6 +41,7 @@ export function releaseHook(player) {
   player.hookState = 'IDLE';
   player.hookedFood = [];
   player.hookedPlayerId = null;
+  player.hookedCellId = null;
   player.hookedOwnCells = [];
   player.hookCooldown = HOOK_COOLDOWN;
 }
@@ -88,8 +90,24 @@ export function updateFlyingHook(player, food, players) {
         // Hook hit a player!
         if (player.mass > target.mass) {
           // Hooker is bigger — reel victim in for easy eat
+          // Find the specific cell that was hit
+          let hookedCellId = null;
+          for (const cell of target.cells) {
+            const cdx = player.hookX - cell.x;
+            const cdy = player.hookY - cell.y;
+            const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+            if (cdist < cell.radius + HOOK_PLAYER_RADIUS) {
+              hookedCellId = cell.id;
+              break;
+            }
+          }
+          if (!hookedCellId && target.cells.length > 0) {
+            // Fallback: hook the nearest cell
+            hookedCellId = target.cells[0].id;
+          }
           player.hookState = 'REELING_PLAYER';
           player.hookedPlayerId = target.id;
+          player.hookedCellId = hookedCellId;
           player.hookX = target.x;
           player.hookY = target.y;
           return;
@@ -221,7 +239,7 @@ export function updateAnchoredHook(player) {
   player.hookY = player.anchorY;
 }
 
-// Reel a hooked player toward the hooker — apply to target's cells
+// Reel a hooked player toward the hooker — only the specific hooked cell
 export function updateReelingPlayer(player, players) {
   if (player.hookState !== 'REELING_PLAYER') return;
 
@@ -231,9 +249,17 @@ export function updateReelingPlayer(player, players) {
     return;
   }
 
-  // Pull all victim cells toward hooker
-  const dx = player.x - target.x;
-  const dy = player.y - target.y;
+  // Find the specific hooked cell
+  const hookedCell = target.cells.find(c => c.id === player.hookedCellId);
+  if (!hookedCell) {
+    // Hooked cell was consumed/merged — release the hook
+    releaseHook(player);
+    return;
+  }
+
+  // Pull only the hooked cell toward hooker
+  const dx = player.x - hookedCell.x;
+  const dy = player.y - hookedCell.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
   if (dist > 1) {
@@ -241,20 +267,18 @@ export function updateReelingPlayer(player, players) {
     const ny = dy / dist;
     const pullSpeed = HOOK_PLAYER_PULL;
 
-    for (const cell of target.cells) {
-      cell.vx += nx * pullSpeed * DT * 3;
-      cell.vy += ny * pullSpeed * DT * 3;
-      // Slow victim's escape attempts
-      cell.vx *= 0.95;
-      cell.vy *= 0.95;
-    }
+    hookedCell.vx += nx * pullSpeed * DT * 3;
+    hookedCell.vy += ny * pullSpeed * DT * 3;
+    // Slow victim's escape attempts
+    hookedCell.vx *= 0.95;
+    hookedCell.vy *= 0.95;
   }
 
-  // Update hook visual to track victim
-  player.hookX = target.x;
-  player.hookY = target.y;
+  // Update hook visual to track the hooked cell
+  player.hookX = hookedCell.x;
+  player.hookY = hookedCell.y;
 
-  // Release if victim gets too far (broke free) or if they died
+  // Release if hooked cell gets too far (broke free)
   if (dist > HOOK_RANGE * 1.5) {
     releaseHook(player);
   }

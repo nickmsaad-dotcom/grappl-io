@@ -357,8 +357,20 @@ export function updateBotInput(bot, players, food, powerups) {
     for (const c of bot.cells) {
       if (c.mass > largestMass) largestMass = c.mass;
     }
+
+    // Emergency split: if being reeled in by another player, split to save half mass
     if (largestMass >= SPLIT_MIN_MASS * 2) {
-      if (prey && preyDist < SPLIT_PREY_RANGE && Math.random() < SPLIT_CHANCE) {
+      let beingReeled = false;
+      for (const p of players.values()) {
+        if (p.id !== bot.id && p.hookState === 'REELING_PLAYER' && p.hookedPlayerId === bot.id) {
+          beingReeled = true;
+          break;
+        }
+      }
+      if (beingReeled) {
+        // Split away from the attacker
+        split = true;
+      } else if (prey && preyDist < SPLIT_PREY_RANGE && Math.random() < SPLIT_CHANCE) {
         const halfMass = largestMass / 2;
         if (halfMass > prey.mass) {
           split = true;

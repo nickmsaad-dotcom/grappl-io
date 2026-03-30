@@ -170,7 +170,7 @@ export function render(ctx, canvas, state, dt) {
     const spread = cells.length > 1 ? Math.sqrt(
       cells.reduce((s, c) => s + (c.x - targetX) ** 2 + (c.y - targetY) ** 2, 0) / cells.length
     ) : 0;
-    targetZoom = Math.max(0.25, 1 - (maxR - 18) / 300 - spread / 1500);
+    targetZoom = Math.max(0.15, 1 - (maxR - 18) / 300 - spread / 1500);
   }
 
   // Smooth camera follow (lerp toward target)

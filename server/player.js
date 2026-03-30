@@ -38,6 +38,7 @@ export class Player {
     this.hookCooldown = 0;
     this.hookedFood = [];   // IDs of food being pulled
     this.hookedPlayerId = null; // ID of player being reeled in
+    this.hookedCellId = null;   // Specific cell ID being reeled
     this.hookedOwnCells = []; // References to own cells being reeled in
     this.anchorX = 0;       // Terrain anchor point
     this.anchorY = 0;
@@ -140,6 +141,7 @@ export class Player {
     this.hookState = 'IDLE';
     this.hookedFood = [];
     this.hookedPlayerId = null;
+    this.hookedCellId = null;
     this.hookedOwnCells = [];
     this.invulnTimer = INVULN_DURATION;
     this.alive = true;

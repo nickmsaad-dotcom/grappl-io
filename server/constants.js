@@ -6,7 +6,7 @@ export const KILL_BOUNDARY = 9999;      // Effectively disabled — players boun
 
 // Player
 export const MIN_PLAYER_RADIUS = 18;
-export const MAX_PLAYER_RADIUS = 150;
+export const MAX_PLAYER_RADIUS = 400;
 export const BASE_SPEED = 540;          // px/s at minimum size
 export const SIZE_SPEED_FACTOR = 0.22;  // Sqrt-based: bigger = slower but not crawling
 export const BASE_ACCEL = 3600;         // px/s^2 at minimum size
